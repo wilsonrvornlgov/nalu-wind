@@ -58,6 +58,7 @@ struct WallUserData : public UserData {
   NormalHeatFlux q_;
   ReferenceTemperature referenceTemperature_;
   Pressure pressure_;
+  GammaWall gamma_;
   unsigned gravityComponent_;
   RoughnessHeight z0_;
   double uRef_;
@@ -451,6 +452,10 @@ template<> struct convert<sierra::nalu::SpecDissRate> {
 
 template<> struct convert<sierra::nalu::GammaInf> {
   static bool decode(const Node& node, sierra::nalu::GammaInf& rhs) ;
+};
+
+template<> struct convert<sierra::nalu::GammaWall> {
+  static bool decode(const Node& node, sierra::nalu::GammaWall& rhs) ;
 };
 
 template<> struct convert<sierra::nalu::Temperature> {

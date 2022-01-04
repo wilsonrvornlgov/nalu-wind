@@ -625,6 +625,19 @@ namespace YAML
      return true;
    }
 
+ bool convert<sierra::nalu::GammaWall>::decode(const Node& node,
+     sierra::nalu::GammaWall& gamma)
+   {
+     if (!node.IsScalar())
+     {
+       return false;
+     }
+
+     gamma.gamma_ = node.as<double>();
+
+     return true;
+   }
+
   bool convert<sierra::nalu::Temperature>::decode(const Node& node,
     sierra::nalu::Temperature& t)
   {
