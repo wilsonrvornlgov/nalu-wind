@@ -182,29 +182,28 @@ BLTGammaM2015NodeKernel::execute(
 
     //printf("y = %.8E dy = %.8E\n", coords[1], dy);
 
+#if 0
     if (dy < 0.1 && timeStepCount == 100) {
-      //std::printf("%i %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E %.12E\n",
-      //  timeStepCount, coords[0], coords[1], coords[2], vel[0], vel[2], gamint, tke, sdr, minD, dvnn, TuL, lamda0L, Re0c, Rev, fonset1, fonset2, fonset3, fonset, fturb,
-      //  rt, sijMag, vortMag, Pgamma, Dgamma, Pgamma-Dgamma);
       NaluEnv::self().naluOutputP0() <<
-   timeStepCount << " " << coords[0] << " " << coords[1] << " " << coords[2] << " " << vel[0] << " " << 
-   vel[2] << " " << gamint << " " << tke << " " << sdr << " " << minD << " " << 
-   dvnn << " " << TuL << " " << lamda0L << " " << Re0c << " " << Rev << " " << 
-   fonset1 << " " << fonset2 << " " << fonset3 << " " << fonset << " " << fturb << " " << 
-   rt << " " << sijMag << " " << vortMag << " " << Pgamma << " " << Dgamma << " " << 
-   Pgamma-Dgamma << std::endl;
+        timeStepCount << " " << coords[0] << " " << coords[1] << " " << coords[2] << " " << vel[0] << " " << 
+        vel[2] << " " << gamint << " " << tke << " " << sdr << " " << minD << " " << 
+        dvnn << " " << TuL << " " << lamda0L << " " << Re0c << " " << Rev << " " << 
+        fonset1 << " " << fonset2 << " " << fonset3 << " " << fonset << " " << fturb << " " << 
+        rt << " " << sijMag << " " << vortMag << " " << Pgamma << " " << Dgamma << " " << 
+        Pgamma-Dgamma << std::endl;
 
    if (dx < 0.08) {
-           NaluEnv::self().naluOutputP0() <<
-     timeStepCount+0.12345678 << " " << coords[0] << " " << coords[1] << " " << coords[2] << " " << vel[0] << " " <<
-     vel[2] << " " << gamint << " " << tke << " " << sdr << " " << minD << " " <<
-     dvnn << " " << TuL << " " << lamda0L << " " << Re0c << " " << Rev << " " <<
-     fonset1 << " " << fonset2 << " " << fonset3 << " " << fonset << " " << fturb << " " <<
-     rt << " " << sijMag << " " << vortMag << " " << Pgamma << " " << Dgamma << " " <<
-     Pgamma-Dgamma << std::endl;
+      NaluEnv::self().naluOutputP0() <<
+        timeStepCount+0.12345678 << " " << coords[0] << " " << coords[1] << " " << coords[2] << " " << vel[0] << " " <<
+        vel[2] << " " << gamint << " " << tke << " " << sdr << " " << minD << " " <<
+        dvnn << " " << TuL << " " << lamda0L << " " << Re0c << " " << Rev << " " <<
+        fonset1 << " " << fonset2 << " " << fonset3 << " " << fonset << " " << fturb << " " <<
+        rt << " " << sijMag << " " << vortMag << " " << Pgamma << " " << Dgamma << " " <<
+        Pgamma-Dgamma << std::endl;
    }
 
-    }
+   }
+#endif
 
   rhs(0) += (Pgamma + Dgamma) * dVol;
   lhs(0, 0) -= (PgammaDir + DgammaDir) * dVol;

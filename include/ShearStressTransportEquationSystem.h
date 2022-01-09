@@ -60,11 +60,15 @@ public:
   void clip_min_distance_to_wall();
   void compute_f_one_blending();
   void update_and_clip();
+  void update_and_clip_gamma();
   void clip_sst(
     const stk::mesh::NgpMesh& ngpMesh,
     const stk::mesh::Selector& sel,
     stk::mesh::NgpField<double>& tke,
-    stk::mesh::NgpField<double>& sdr,
+    stk::mesh::NgpField<double>& sdr);
+  void clip_sst_gamma(
+    const stk::mesh::NgpMesh& ngpMesh,
+    const stk::mesh::Selector& sel,
     stk::mesh::NgpField<double>& gamma);
 
   TurbKineticEnergyEquationSystem* tkeEqSys_;
