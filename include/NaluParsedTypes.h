@@ -61,13 +61,6 @@ struct GammaInf {
   {}
 };
 
-struct GammaWall {
-  double gamma_;
-  GammaWall()
-    : gamma_(0.0)
-  {}
-};
-
 struct GammaOpen {
   double gamma_;
   GammaOpen()

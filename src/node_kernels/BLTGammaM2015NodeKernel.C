@@ -27,9 +27,6 @@ BLTGammaM2015NodeKernel::BLTGammaM2015NodeKernel(
     viscID_(get_field_ordinal(meta, "viscosity")),
     dudxID_(get_field_ordinal(meta, "dudx")),
     minDID_(get_field_ordinal(meta, "minimum_distance_to_wall")),
-    dWallDistdxID_(get_field_ordinal(meta, "dWallDistdx")),
-    //dNDotVdxID_(get_field_ordinal(meta, "dNDotVdx")),
-    //NDotVID_(get_field_ordinal(meta, "NDotV")),
     dualNodalVolumeID_(get_field_ordinal(meta, "dual_nodal_volume")),
     coordinatesID_(get_field_ordinal(meta, "coordinates")),
     velocityNp1ID_(get_field_ordinal(meta, "velocity")),
@@ -48,9 +45,6 @@ BLTGammaM2015NodeKernel::setup(Realm& realm)
   visc_            = fieldMgr.get_field<double>(viscID_);
   dudx_            = fieldMgr.get_field<double>(dudxID_);
   minD_            = fieldMgr.get_field<double>(minDID_);
-  dWallDistdx_     = fieldMgr.get_field<double>(dWallDistdxID_);
-  //dNDotVdx_        = fieldMgr.get_field<double>(dNDotVdxID_);
-  //NDotV_           = fieldMgr.get_field<double>(NDotVID_);
   dualNodalVolume_ = fieldMgr.get_field<double>(dualNodalVolumeID_);
   coordinates_     = fieldMgr.get_field<double>(coordinatesID_);
   velocityNp1_     = fieldMgr.get_field<double>(velocityNp1ID_);
@@ -110,7 +104,6 @@ BLTGammaM2015NodeKernel::execute(
   const DblType density   = density_.get(node, 0);
   const DblType visc      = visc_.get(node, 0);
   const DblType minD      = minD_.get(node, 0);
-  //const DblType NDotV     = NDotV_.get(node, 0);
   const DblType dVol      = dualNodalVolume_.get(node, 0);
 
   // define the wall normal vector (for now, hardwire to NASA TM case: z = wall norm direction)
@@ -138,9 +131,6 @@ BLTGammaM2015NodeKernel::execute(
   for (int d = 0; d < nDim_; d++) {
     coords[d] = coordinates_.get(node, d);
     vel[d] = velocityNp1_.get(node, d);
-    //dwalldistdx[d] = dWallDistdx_.get(node, d);
-    //dndotvdx[d] = dNDotVdx_.get(node, d);
-    //dvnn += dndotvdx[d] * dwalldistdx[d];
   }
 
   for (int i=0; i < nDim_; ++i) {
@@ -180,9 +170,9 @@ BLTGammaM2015NodeKernel::execute(
     const double dx   = stk::math::abs(coords[0] - 0.50);
     const double dy   = stk::math::abs(coords[1] + 0.50);
 
+#if 0
     //printf("y = %.8E dy = %.8E\n", coords[1], dy);
 
-#if 0
     if (dy < 0.1 && timeStepCount == 100) {
       NaluEnv::self().naluOutputP0() <<
         timeStepCount << " " << coords[0] << " " << coords[1] << " " << coords[2] << " " << vel[0] << " " << 
