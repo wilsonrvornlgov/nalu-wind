@@ -15,7 +15,9 @@
 #include "FieldTypeDef.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_ngp/Ngp.hpp"
+#include "stk_mesh/base/Ngp.hpp"
+#include "stk_mesh/base/NgpField.hpp"
+#include "stk_mesh/base/Types.hpp"
 
 namespace sierra{
 namespace nalu{
@@ -29,10 +31,10 @@ public:
   MomentumGclSrcNodeKernel(
     const stk::mesh::BulkData&);
 
-  KOKKOS_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   MomentumGclSrcNodeKernel() = default;
 
-  KOKKOS_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   virtual ~MomentumGclSrcNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -44,12 +46,12 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  ngp::Field<double> velocityNp1_;
-  ngp::Field<double> densityNp1_;
-  ngp::Field<double> divV_;
-  ngp::Field<double> dualNdVolNm1_;
-  ngp::Field<double> dualNdVolN_;
-  ngp::Field<double> dualNdVolNp1_;
+  stk::mesh::NgpField<double> velocityNp1_;
+  stk::mesh::NgpField<double> densityNp1_;
+  stk::mesh::NgpField<double> divV_;
+  stk::mesh::NgpField<double> dualNdVolNm1_;
+  stk::mesh::NgpField<double> dualNdVolN_;
+  stk::mesh::NgpField<double> dualNdVolNp1_;
 
   unsigned velocityNp1ID_ {stk::mesh::InvalidOrdinal};
   unsigned densityNp1ID_ {stk::mesh::InvalidOrdinal};

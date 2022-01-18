@@ -16,7 +16,9 @@
 #include <KokkosInterface.h>
 
 #include <stk_mesh/base/Entity.hpp>
-#include <stk_ngp/Ngp.hpp>
+#include <stk_mesh/base/Ngp.hpp>
+#include <stk_mesh/base/NgpMesh.hpp>
+#include <stk_mesh/base/NgpField.hpp>
 #include <vector>
 
 namespace sierra{
@@ -30,16 +32,16 @@ struct NGPApplyCoeff
 {
   NGPApplyCoeff(EquationSystem*);
 
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   NGPApplyCoeff() = default;
 
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   ~NGPApplyCoeff() = default;
 
   KOKKOS_FUNCTION
   void operator()(
     unsigned numMeshobjs,
-    const ngp::Mesh::ConnectedNodes& symMeshobjs,
+    const stk::mesh::NgpMesh::ConnectedNodes& symMeshobjs,
     const SharedMemView<int*,DeviceShmem> & scratchIds,
     const SharedMemView<int*,DeviceShmem> & sortPermutation,
     SharedMemView<double*,DeviceShmem> & rhs,
@@ -49,25 +51,26 @@ struct NGPApplyCoeff
   KOKKOS_FUNCTION
   void extract_diagonal(
     const unsigned nEntities,
-    const ngp::Mesh::ConnectedNodes& entities,
+    const stk::mesh::NgpMesh::ConnectedNodes& entities,
     SharedMemView<double**, DeviceShmem>& lhs) const;
 
   KOKKOS_FUNCTION
   void reset_overset_rows(
     const unsigned nEntities,
-    const ngp::Mesh::ConnectedNodes& entities,
+    const stk::mesh::NgpMesh::ConnectedNodes& entities,
     SharedMemView<double*, DeviceShmem>&  rhs,
     SharedMemView<double**, DeviceShmem>& lhs) const;
 
-  const ngp::Mesh ngpMesh_;
-  mutable ngp::Field<double> diagField_;
-  ngp::Field<int> iblankField_;
+  const stk::mesh::NgpMesh ngpMesh_;
+  mutable stk::mesh::NgpField<double> diagField_;
+  stk::mesh::NgpField<int> iblankField_;
 
   CoeffApplier* deviceSumInto_;
 
   const unsigned nDim_{3};
   const bool hasOverset_{false};
   const bool extractDiagonal_{false};
+  const bool resetOversetRows_{true};
 };
 
 class SolverAlgorithm : public Algorithm

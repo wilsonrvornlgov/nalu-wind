@@ -12,7 +12,6 @@
 #ifndef SolutionOptions_h
 #define SolutionOptions_h
 
-#include <NaluParsing.h>
 #include <Enums.h>
 
 // standard c++
@@ -20,6 +19,9 @@
 #include <map>
 #include <utility>
 #include <memory>
+#include <vector>
+
+namespace YAML { class Node; }
 
 namespace sierra{
 namespace nalu{
@@ -59,7 +61,7 @@ public:
 
   inline bool has_mesh_deformation() const
   {
-    return externalMeshDeformation_ | meshDeformation_;
+    return externalMeshDeformation_;
   }
 
   inline bool does_mesh_move() const
@@ -123,23 +125,8 @@ public:
   bool isTurbulent_;
   TurbulenceModel turbulenceModel_;
   bool meshMotion_;
-  bool meshDeformation_;
+  bool meshTransformation_;
   bool externalMeshDeformation_;
-  bool activateUniformRefinement_;
-  bool uniformRefineSaveAfter_;
-  std::vector<int> refineAt_;
-  bool activateAdaptivity_;
-  ErrorIndicatorType errorIndicatorType_;
-  int adaptivityFrequency_;
-  bool useMarker_;
-  double refineFraction_;
-  double unrefineFraction_;
-  double physicalErrIndCriterion_;
-  double physicalErrIndUnrefCriterionMultipler_;
-  double maxRefinementNumberOfElementsFraction_;
-  bool adapterExtraOutput_;
-  bool useAdapter_;
-  int maxRefinementLevel_;
   bool ncAlgGaussLabatto_;
   bool ncAlgUpwindAdvection_;
   bool ncAlgIncludePstab_;
@@ -162,6 +149,8 @@ public:
   double earthAngularVelocity_;
   double latitude_;
   double raBoussinesqTimeScale_;
+  double symmetryBcPenaltyFactor_;
+  bool useStreletsUpwinding_;
 
   // global mdot correction alg
   bool activateOpenMdotCorrection_;
@@ -222,11 +211,20 @@ public:
 
   ProjTScaleType tscaleType_{TSCALE_DEFAULT};
 
+  // dynamic forcing parameters
+  int dynamicBodyForceDir_{0};
+  double dynamicBodyForceVelReference_{0.0};
+  double dynamicBodyForceDenReference_{1.0};
+  std::string dynamicBodyForceVelTarget_;
+  std::vector<std::string> dynamicBodyForceDragTarget_;
+  std::string dynamicBodyForceOutFile_;
+  bool dynamicBodyForceBox_{false};
+
   std::string name_;
 
   bool newHO_;
 
-  bool resetTAMSAverages_;
+  bool resetAMSAverages_;
 };
 
 } // namespace nalu

@@ -9,3 +9,9 @@
 tags
 *.save
 .nfs*
+*.code-workspace
+.vscode/
+compile_commands.json
+.clangd
+spack*
+*.cache

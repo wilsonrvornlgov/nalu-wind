@@ -7,15 +7,15 @@
 // for more details.
 //
 
-
 #ifndef TKESSTNODEKERNEL_H
 #define TKESSTNODEKERNEL_H
 
 #include "node_kernels/NodeKernel.h"
 #include "FieldTypeDef.h"
-
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_ngp/Ngp.hpp"
+#include "stk_mesh/base/Ngp.hpp"
+#include "stk_mesh/base/NgpField.hpp"
+#include "stk_mesh/base/Types.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -27,10 +27,9 @@ class TKESSTNodeKernel : public NGPNodeKernel<TKESSTNodeKernel>
 public:
   TKESSTNodeKernel(const stk::mesh::MetaData&);
 
-  KOKKOS_FORCEINLINE_FUNCTION
-  TKESSTNodeKernel() = default;
+  TKESSTNodeKernel() = delete;
 
-  KOKKOS_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   virtual ~TKESSTNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -42,19 +41,19 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  ngp::Field<double> tke_;
-  ngp::Field<double> sdr_;
-  ngp::Field<double> density_;
-  ngp::Field<double> tvisc_;
-  ngp::Field<double> dudx_;
-  ngp::Field<double> dualNodalVolume_;
+  stk::mesh::NgpField<double> tke_;
+  stk::mesh::NgpField<double> sdr_;
+  stk::mesh::NgpField<double> density_;
+  stk::mesh::NgpField<double> tvisc_;
+  stk::mesh::NgpField<double> dudx_;
+  stk::mesh::NgpField<double> dualNodalVolume_;
 
-  unsigned tkeID_             {stk::mesh::InvalidOrdinal};
-  unsigned sdrID_             {stk::mesh::InvalidOrdinal};
-  unsigned densityID_         {stk::mesh::InvalidOrdinal};
-  unsigned tviscID_           {stk::mesh::InvalidOrdinal};
-  unsigned dudxID_            {stk::mesh::InvalidOrdinal};
-  unsigned dualNodalVolumeID_ {stk::mesh::InvalidOrdinal};
+  unsigned tkeID_{stk::mesh::InvalidOrdinal};
+  unsigned sdrID_{stk::mesh::InvalidOrdinal};
+  unsigned densityID_{stk::mesh::InvalidOrdinal};
+  unsigned tviscID_{stk::mesh::InvalidOrdinal};
+  unsigned dudxID_{stk::mesh::InvalidOrdinal};
+  unsigned dualNodalVolumeID_{stk::mesh::InvalidOrdinal};
 
   NodeKernelTraits::DblType betaStar_;
   NodeKernelTraits::DblType tkeProdLimitRatio_;
@@ -63,8 +62,7 @@ private:
   const int nDim_;
 };
 
-}  // nalu
-}  // sierra
-
+} // namespace nalu
+} // namespace sierra
 
 #endif /* TKESSTNODEKERNEL_H */

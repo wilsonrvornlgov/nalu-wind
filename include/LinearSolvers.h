@@ -14,6 +14,7 @@
 
 #include <Enums.h>
 
+#include <Teuchos_ParameterList.hpp>
 #include <map>
 #include <string>
 
@@ -54,12 +55,20 @@ public:
    */
   LinearSolver *create_solver(
     std::string solverBlockName,
+    const std::string realmName,
     EquationType theEQ);
+
+  LinearSolver* reinitialize_solver(
+    const std::string& solverBlockName,
+    const std::string& realmName,
+    const EquationType theEQ);
 
   Simulation *root();
   Simulation *parent();
 
-  typedef std::map<EquationType, LinearSolver *> SolverMap;
+  Teuchos::ParameterList get_solver_configuration(std::string);
+
+  typedef std::map<std::string, LinearSolver *> SolverMap;
   typedef std::map<std::string, TpetraLinearSolverConfig *> SolverTpetraConfigMap;
   typedef std::map<std::string, HypreLinearSolverConfig*> HypreSolverConfigMap;
 

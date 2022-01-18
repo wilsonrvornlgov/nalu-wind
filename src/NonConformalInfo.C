@@ -98,9 +98,9 @@ NonConformalInfo::NonConformalInfo(
 {
   // determine search method for this pair
   if ( searchMethodName == "boost_rtree" ) {
-    searchMethod_ = stk::search::BOOST_RTREE;
-    NaluEnv::self().naluOutputP0() << "Warning: search method 'boost_rtree' is being deprecated"
-           <<", please switch to 'stk_kdtree'" << std::endl;
+    searchMethod_ = stk::search::KDTREE;
+    NaluEnv::self().naluOutputP0() << "Warning: search method 'boost_rtree' has been deprecated"
+           <<", Switching to 'stk_kdtree'" << std::endl;
   }
   else if ( searchMethodName == "stk_kdtree" )
     searchMethod_ = stk::search::KDTREE;
@@ -143,11 +143,6 @@ NonConformalInfo::initialize()
   boundingFaceElementBoxVec_.clear();
   searchKeyPair_.clear();
 
-  // delete info only if adaptivity is active
-  if ( realm_.mesh_changed() ) {
-    delete_dgInfo();
-  }
-  
   // construct if the size is zero; reset always
   if ( dgInfoVec_.size() == 0 )
     construct_dgInfo();

@@ -12,6 +12,7 @@
 #include "UnitTestRealm.h"
 #include "UnitTestUtils.h"
 
+#include "NaluEnv.h"
 #include "LinearSolvers.h"
 #include "Realms.h"
 #include "Realm.h"
@@ -68,18 +69,18 @@ const std::string naluDefaultInputs =
 
 const std::string realmDefaultSettings =
   "- name: unitTestRealm                                                  \n"
-  "  use_edges: no                                                        \n"
+  "  use_edges: yes                                                       \n"
   "                                                                       \n"
   "  equation_systems:                                                    \n"
   "    name: theEqSys                                                     \n"
   "    max_iterations: 2                                                  \n"
   "                                                                       \n"
   "    solver_system_specification:                                       \n"
-  "      temperature: solve_scalar                                        \n"
+  "      ndtw : solve_scalar                                              \n"
   "                                                                       \n"
   "    systems:                                                           \n"
-  "      - HeatConduction:                                                \n"
-  "          name: myHC                                                   \n"
+  "      - WallDistance:                                                  \n"
+  "          name: myNDTW                                                 \n"
   "          max_iterations: 1                                            \n"
   "          convergence_tolerance: 1e-5                                  \n"
   "                                                                       \n"
@@ -91,7 +92,6 @@ const std::string realmDefaultSettings =
   "    name: unitTestRealmOptions                                         \n"
   "    turbulence_model: laminar                                          \n"
   "    interp_rhou_together_for_mdot: yes                                 \n"
-  "    use_consolidated_solver_algorithm: yes                              \n"
   "    reduced_sens_cvfem_poisson: no                                     \n"
   "                                                                       \n"
   "    options:                                                           \n"
@@ -149,13 +149,13 @@ NaluTest::create_realm(const YAML::Node& realm_node, const std::string realm_typ
   sierra::nalu::Realm* realm = nullptr;
   if (realm_type == "multi_physics") {
     realm = new sierra::nalu::Realm(*sim_.realms_, realm_node);
+    realm->solutionOptions_->load(realm_node);
     realm->equationSystems_.load(realm_node);
   }
-  else
+  else{
     realm = new sierra::nalu::InputOutputRealm(*sim_.realms_, realm_node);
-
-  // Populate solution options
-  realm->solutionOptions_->load(realm_node);
+    realm->solutionOptions_->load(realm_node);
+  }
 
   // Set-up mesh metadata and bulkdata ... let user fill mesh in test function
   if (createMeshObjects) {

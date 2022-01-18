@@ -23,6 +23,7 @@
 #include "LinearSolver.h"
 #include "LinearSolvers.h"
 #include "LinearSystem.h"
+#include "NaluParsing.h"
 #include "NonConformalManager.h"
 #include "Realm.h"
 #include "Realms.h"
@@ -76,7 +77,7 @@ WallDistEquationSystem::WallDistEquationSystem(
 
   auto solverName = eqSystems.get_solver_block_name("ndtw");
   LinearSolver* solver = realm_.root()->linearSolvers_->create_solver(
-    solverName, EQ_WALL_DISTANCE);
+    solverName, realm_.name(), EQ_WALL_DISTANCE);
   linsys_ = LinearSystem::create(realm_, 1, this, solver);
 
   NaluEnv::self().naluOutputP0()
@@ -96,6 +97,10 @@ WallDistEquationSystem::load(const YAML::Node& node)
 
   get_if_present(node, "update_frequency", updateFreq_, updateFreq_);
   get_if_present(node, "force_init_on_restart", forceInitOnRestart_, forceInitOnRestart_);
+
+  bool exchangeFringeData = true;
+  get_if_present(node, "exchange_fringe_data", exchangeFringeData, exchangeFringeData);
+  resetOversetRows_ = exchangeFringeData;
 }
 
 void
@@ -344,10 +349,26 @@ WallDistEquationSystem::register_non_conformal_bc(
 void
 WallDistEquationSystem::register_overset_bc()
 {
-  if (decoupledOverset_)
-    EquationSystem::create_constraint_algorithm(wallDistPhi_);
-  else
-    create_constraint_algorithm(wallDistPhi_);
+  if (resetOversetRows_) {
+    if (decoupledOverset_)
+      EquationSystem::create_constraint_algorithm(wallDistPhi_);
+    else
+      create_constraint_algorithm(wallDistPhi_);
+  } else {
+    for (auto* superPart: realm_.oversetBCPartVec_)
+      for (auto* part : superPart->subsets()) {
+        const AlgorithmType algType = SYMMETRY;
+
+        auto& wPhiNp1 = wallDistPhi_->field_of_state(stk::mesh::StateNone);
+        auto& dPhiDxNone = dphidx_->field_of_state(stk::mesh::StateNone);
+
+        // Set up dphi/dx calculation algorithms
+        nodalGradAlgDriver_
+          .register_face_algorithm<ScalarNodalGradBndryElemAlg>(
+            algType, part, "nodal_grad", &wPhiNp1, &dPhiDxNone,
+            edgeNodalGradient_);
+      }
+  }
 
   // No pre-iteration update of field as it is going to be reset in
   // solve_and_update
@@ -373,15 +394,15 @@ WallDistEquationSystem::initialize()
 void
 WallDistEquationSystem::reinitialize_linear_system()
 {
+  // If this is decoupled overset simulation and the user has requested that the
+  // linear system be reused, then do nothing
+  if (decoupledOverset_ && linsys_->config().reuseLinSysIfPossible()) return;
+
   delete linsys_;
   const EquationType eqID = EQ_WALL_DISTANCE;
-  auto it = realm_.root()->linearSolvers_->solvers_.find(eqID);
-  if (it != realm_.root()->linearSolvers_->solvers_.end())
-    delete it->second;
-
   auto solverName = realm_.equationSystems_.get_solver_block_name("ndtw");
-  LinearSolver* solver = realm_.root()->linearSolvers_->create_solver(
-    solverName, eqID);
+  LinearSolver* solver = realm_.root()->linearSolvers_->reinitialize_solver(
+    solverName, realm_.name(), eqID);
   linsys_ = LinearSystem::create(realm_, 1, this, solver);
 
   solverAlgDriver_->initialize_connectivity();
@@ -411,13 +432,14 @@ WallDistEquationSystem::solve_and_update()
 
   // Since this is purely geometric, we need at least two coupling iterations to
   // inform meshes about the field when using decoupled overset
-  const int numOversetIters =
-    decoupledOverset_ ? std::max(numOversetIters_, 2) : numOversetIters_;
-  for (int k=0; k< numOversetIters; k++) {
+  const int numOversetIters = (decoupledOverset_ && resetOversetRows_)
+                                ? std::max(numOversetIters_, 2)
+                                : numOversetIters_;
+  for (int k = 0; k < numOversetIters; k++) {
     assemble_and_solve(wallDistPhi_);
 
-    if (decoupledOverset_)
-      realm_.overset_orphan_node_field_update(wallDistPhi_, 1, 1);
+    if (decoupledOverset_ && !resetOversetRows_)
+      realm_.overset_field_update(wallDistPhi_, 1, 1);
   }
 
   // projected nodal gradient
@@ -447,6 +469,7 @@ WallDistEquationSystem::compute_wall_distance()
     wallDistance_->mesh_meta_data_ordinal());
   const stk::mesh::Selector sel = stk::mesh::selectField(*wallDistPhi_);
 
+  wdist.sync_to_device();
   nalu_ngp::run_entity_algorithm(
     "compute_wall_dist",
     ngpMesh, stk::topology::NODE_RANK, sel, KOKKOS_LAMBDA(const MeshIndex& mi) {
@@ -476,7 +499,9 @@ WallDistEquationSystem::compute_wall_distance()
     stk::mesh::communicate_field_data(
       *realm_.nonConformalManager_->nonConformalGhosting_, fVec);
   if (realm_.hasOverset_)
-    realm_.overset_orphan_node_field_update(wallDistance_, 1, 1);
+    realm_.overset_field_update(wallDistance_, 1, 1);
+  wdist.modify_on_host();
+  wdist.sync_to_device();
 }
 
 void

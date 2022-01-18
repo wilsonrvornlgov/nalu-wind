@@ -7,25 +7,86 @@
 // for more details.
 //
 
-
 #ifndef HYPRELINEARSYSTEM_H
 #define HYPRELINEARSYSTEM_H
 
+#ifndef HYPRE_LINEAR_SYSTEM_TIMER
+#define HYPRE_LINEAR_SYSTEM_TIMER
+#endif // HYPRE_LINEAR_SYSTEM_TIMER
+#undef HYPRE_LINEAR_SYSTEM_TIMER
+
+#ifndef HYPRE_LINEAR_SYSTEM_DEBUG
+#define HYPRE_LINEAR_SYSTEM_DEBUG
+#endif // HYPRE_LINEAR_SYSTEM_DEBUG
+#undef HYPRE_LINEAR_SYSTEM_DEBUG
+
 #include "LinearSystem.h"
-#include "XSDKHypreInterface.h"
+#include "HypreDirectSolver.h"
 
-#include "stk_mesh/base/BulkData.hpp"
+// This is needed fro get_gpu_memory_info
+#include "stk_util/environment/memory_util.hpp"
 
-#include "HYPRE_IJ_mv.h"
-#include "HYPRE_parcsr_ls.h"
-#include "HYPRE_parcsr_mv.h"
-#include "krylov.h"
-#include "HYPRE.h"
+// NGP Algorithms
+#include "ngp_utils/NgpLoopUtils.h"
 
-#include <unordered_set>
+// These are all necessary for compilation
+#include "EquationSystem.h"
+#include "NaluEnv.h"
+#include "NonConformalManager.h"
+#include "overset/OversetManager.h"
+#include "overset/OversetInfo.h"
+#include <utils/CreateDeviceExpression.h>
 
 namespace sierra {
 namespace nalu {
+
+using UnsignedView = Kokkos::View<unsigned*, sierra::nalu::MemSpace>;
+using UnsignedViewHost = UnsignedView::HostMirror;
+
+using DoubleView = Kokkos::View<double*, sierra::nalu::MemSpace>;
+using DoubleViewHost = DoubleView::HostMirror;
+
+using HypreIntTypeView = Kokkos::View<HypreIntType*, sierra::nalu::MemSpace>;
+using HypreIntTypeViewHost = HypreIntTypeView::HostMirror;
+
+// const random access views for read only, noncoalesced (texture) memory fetches
+using UnsignedViewRA = Kokkos::View<const unsigned*, sierra::nalu::MemSpace, Kokkos::MemoryTraits<Kokkos::RandomAccess> >;
+using HypreIntTypeViewRA = Kokkos::View<const HypreIntType*, sierra::nalu::MemSpace, Kokkos::MemoryTraits<Kokkos::RandomAccess> >;
+
+// This 2D view needs to be LayoutLeft. Do NOT change
+using DoubleView2D =
+  Kokkos::View<double**, Kokkos::LayoutLeft, sierra::nalu::MemSpace>;
+using DoubleView2DHost = DoubleView2D::HostMirror;
+
+// This 2D view needs to be LayoutLeft. Do NOT change
+using HypreIntTypeView2D =
+  Kokkos::View<HypreIntType**, Kokkos::LayoutLeft, sierra::nalu::MemSpace>;
+using HypreIntTypeView2DHost = HypreIntTypeView2D::HostMirror;
+
+using HypreIntTypeViewScalar =
+  Kokkos::View<HypreIntType, sierra::nalu::MemSpace>;
+using HypreIntTypeViewScalarHost = HypreIntTypeViewScalar::HostMirror;
+
+using HypreIntTypeUnorderedMap =
+  Kokkos::UnorderedMap<HypreIntType, HypreIntType, sierra::nalu::MemSpace>;
+using HypreIntTypeUnorderedMapHost = HypreIntTypeUnorderedMap::HostMirror;
+
+using MemoryMap =
+  Kokkos::UnorderedMap<HypreIntType, unsigned, sierra::nalu::MemSpace>;
+using MemoryMapHost = MemoryMap::HostMirror;
+
+// UVM Views
+using DoubleViewUVM = Kokkos::View<double*, sierra::nalu::UVMSpace>;
+using DoubleView2DUVM =
+  Kokkos::View<double**, Kokkos::LayoutLeft, sierra::nalu::UVMSpace>;
+using HypreIntTypeViewUVM = Kokkos::View<HypreIntType*, sierra::nalu::UVMSpace>;
+using HypreIntTypeView2DUVM =
+  Kokkos::View<HypreIntType**, Kokkos::LayoutLeft, sierra::nalu::UVMSpace>;
+
+// Periodic Node Map
+using PeriodicNodeMap =
+  Kokkos::UnorderedMap<HypreIntType, HypreIntType, sierra::nalu::MemSpace>;
+using PeriodicNodeMapHost = PeriodicNodeMap::HostMirror;
 
 /** Nalu interface to populate a Hypre Linear System
  *
@@ -40,39 +101,99 @@ namespace nalu {
 class HypreLinearSystem : public LinearSystem
 {
 public:
-  // Quiet "partially overridden" compiler warnings.
-  using LinearSystem::buildDirichletNodeGraph;
   /**
-   * @param[in] realm The realm instance that holds the EquationSystem being solved
-   * @param[in] numDof The degrees of freedom for the equation system created (Default: 1)
+   * @param[in] realm The realm instance that holds the EquationSystem being
+   * solved
+   * @param[in] numDof The degrees of freedom for the equation system created
+   * (Default: 1)
    * @param[in] eqSys The equation system instance
    * @param[in] linearSolver Handle to the HypreDirectSolver instance
    */
   HypreLinearSystem(
     Realm& realm,
     const unsigned numDof,
-    EquationSystem *eqSys,
-    LinearSolver *linearSolver);
+    EquationSystem* eqSys,
+    LinearSolver* linearSolver);
 
   virtual ~HypreLinearSystem();
 
-  // Graph/Matrix Construction
-  virtual void buildNodeGraph(const stk::mesh::PartVector&);// for nodal assembly (e.g., lumped mass and source)
-  virtual void buildFaceToNodeGraph(const stk::mesh::PartVector&);// face->node assembly
-  virtual void buildEdgeToNodeGraph(const stk::mesh::PartVector&);// edge->node assembly
-  virtual void buildElemToNodeGraph(const stk::mesh::PartVector&);// elem->node assembly
-  virtual void buildReducedElemToNodeGraph(const stk::mesh::PartVector&);// elem (nearest nodes only)->node assembly
-  virtual void buildFaceElemToNodeGraph(const stk::mesh::PartVector&);// elem:face->node assembly
-  virtual void buildNonConformalNodeGraph(const stk::mesh::PartVector&);// nonConformal->elem_node assembly
-  virtual void buildOversetNodeGraph(const stk::mesh::PartVector&);// overset->elem_node assembly
-  virtual void finalizeLinearSystem();
+  /* equation system name */
+  std::string name_;
 
+  /* data structures for accumulating the matrix elements */
+  std::vector<HypreIntType> localMatSharedRowCounts_;
+  std::vector<HypreIntType> globalMatSharedRowCounts_;
+  std::vector<HypreIntType> localRhsSharedRowCounts_;
+  std::vector<HypreIntType> globalRhsSharedRowCounts_;
+  HypreIntType offProcNNZToSend_;
+  HypreIntType offProcNNZToRecv_;
+  HypreIntType offProcRhsToSend_;
+  HypreIntType offProcRhsToRecv_;
+
+  std::vector<std::vector<HypreIntType>> columnsOwned_;
+  std::vector<HypreIntType> rowCountOwned_;
+
+  std::map<HypreIntType, std::vector<HypreIntType>> columnsShared_;
+  std::map<HypreIntType, unsigned> rowCountShared_;
+
+  HypreIntTypeViewHost row_indices_owned_host_;
+  HypreIntTypeViewHost row_counts_owned_host_;
+
+  HypreIntTypeViewHost row_indices_shared_host_;
+  HypreIntTypeViewHost row_counts_shared_host_;
+
+  HypreIntTypeViewHost cols_owned_host_;
+  HypreIntTypeViewHost cols_shared_host_;
+  HypreIntTypeViewHost cols_host_;
+
+  HypreIntTypeViewUVM rows_uvm_;
+  HypreIntTypeViewHost rows_host_;  
+
+  HypreIntTypeView2DUVM rhs_rows_uvm_;
+  HypreIntTypeView2DHost rhs_rows_host_;  
+
+#ifdef HYPRE_LINEAR_SYSTEM_TIMER
+  struct timeval _start, _stop;
+  std::vector<double> buildBeginLinSysConstTimer_;
+  std::vector<double> buildNodeGraphTimer_;
+  std::vector<double> buildFaceToNodeGraphTimer_;
+  std::vector<double> buildEdgeToNodeGraphTimer_;
+  std::vector<double> buildElemToNodeGraphTimer_;
+  std::vector<double> buildFaceElemToNodeGraphTimer_;
+  std::vector<double> buildOversetNodeGraphTimer_;
+  std::vector<double> buildDirichletNodeGraphTimer_;
+  std::vector<double> buildGraphTimer_;
+  std::vector<double> finalizeLinearSystemTimer_;
+  std::vector<double> hypreMatAssemblyTimer_;
+  std::vector<double> hypreRhsAssemblyTimer_;
+#endif
+
+  // Quiet "partially overridden" compiler warnings.
+  using LinearSystem::buildDirichletNodeGraph;
+  // Graph/Matrix Construction
+  virtual void
+  buildNodeGraph(const stk::mesh::PartVector&
+                   parts); // for nodal assembly (e.g., lumped mass and source)
+  virtual void buildFaceToNodeGraph(
+    const stk::mesh::PartVector& parts); // face->node assembly
+  virtual void buildEdgeToNodeGraph(
+    const stk::mesh::PartVector& parts); // edge->node assembly
+  virtual void buildElemToNodeGraph(
+    const stk::mesh::PartVector& parts); // elem->node assembly
+  virtual void buildReducedElemToNodeGraph(
+    const stk::mesh::PartVector&); // elem (nearest nodes only)->node assembly
+  virtual void buildFaceElemToNodeGraph(
+    const stk::mesh::PartVector& parts); // elem:face->node assembly
+  virtual void buildNonConformalNodeGraph(
+    const stk::mesh::PartVector&); // nonConformal->elem_node assembly
+  virtual void buildOversetNodeGraph(
+    const stk::mesh::PartVector&); // overset->elem_node assembly
+  virtual void finalizeLinearSystem();
   /** Tag rows that must be handled as a Dirichlet BC node
    *
    *  @param[in] partVec List of parts that contain the Dirichlet nodes
    */
   virtual void buildDirichletNodeGraph(const stk::mesh::PartVector&);
-
   /** Tag rows that must be handled as a Dirichlet  node
    *
    *  @param[in] entities List of nodes where Dirichlet conditions are applied
@@ -80,43 +201,234 @@ public:
    *  \sa sierra::nalu::FixPressureAtNodeAlgorithm
    */
   virtual void buildDirichletNodeGraph(const std::vector<stk::mesh::Entity>&);
+  virtual void
+  buildDirichletNodeGraph(const stk::mesh::NgpMesh::ConnectedNodes);
+
+  /** Finalize construction of the linear system matrix and rhs vector
+   *
+   *  This method calls the appropriate Hypre functions to assemble the matrix
+   *  and rhs in a parallel run, as well as registers the matrix and rhs with
+   *  the solver preconditioner.
+   */
+  virtual void loadComplete();
+
+  virtual void dumpMatrixStats();
 
   /** Reset the matrix and rhs data structures for the next iteration/timestep
    *
    */
   virtual void zeroSystem();
 
-  /** Update coefficients of a particular row(s) in the linear system
+  /** Solve the system Ax = b
    *
-   *  The core method of this class, it updates the matrix and RHS based on the
-   *  inputs from the various algorithms. Note that, unlike TpetraLinearSystem,
-   *  this method skips over the fringe points of Overset mesh and the Dirichlet
-   *  nodes rather than resetting them afterward.
+   *  The solution vector is returned in linearSolutionField
    *
-   *  This overloaded method deals with Kernels designed with Kokkos::View arrays.
-   *
-   *  @param[in] numEntities The total number of nodes where data is to be updated
-   *  @param[in] entities A list of STK node entities
-   *
-   *  @param[in] rhs Array containing RHS entries to be summed into
-   *      [numEntities * numDof]
-   *
-   *  @param[in] lhs Array containing LHS entries to be summed into.
-   *      [numEntities * numDof, numEntities * numDof]
-   *
-   *  @param[in] localIds Work array for storing local row IDs
-   *  @param[in] sortPermutation Work array for sorting row IDs
-   *  @param[in] trace_tag Debugging message
+   *  @param[out] linearSolutionField STK field where the solution is populated
    */
-  virtual void sumInto(
-    unsigned numEntities,
-    const ngp::Mesh::ConnectedNodes& entities,
-    const SharedMemView<const double*, DeviceShmem> & rhs,
-    const SharedMemView<const double**, DeviceShmem> & lhs,
-    const SharedMemView<int*, DeviceShmem> & localIds,
-    const SharedMemView<int*, DeviceShmem> & sortPermutation,
-    const char * trace_tag
-  );
+  virtual int solve(stk::mesh::FieldBase* linearSolutionField);
+
+  //! Helper method to transfer the solution from a HYPRE_IJVector instance to
+  //! the STK field data instance.
+  double copy_hypre_to_stk(stk::mesh::FieldBase*);
+
+  /** Populate the LHS and RHS for the Dirichlet rows in linear system
+   */
+  virtual void applyDirichletBCs(
+    stk::mesh::FieldBase* solutionField,
+    stk::mesh::FieldBase* bcValuesField,
+    const stk::mesh::PartVector& parts,
+    const unsigned beginPos,
+    const unsigned endPos);
+
+  sierra::nalu::CoeffApplier* get_coeff_applier();
+
+  // print timings for initialize
+  virtual void printTimings(std::vector<double>& time, const char* name);
+  virtual void buildCoeffApplierPeriodicNodeToHIDMapping();
+  virtual void resetCoeffApplierData();
+  virtual void finishCoupledOversetAssembly();
+  virtual void hypreIJMatrixSetAddToValues();
+  virtual void hypreIJVectorSetAddToValues();
+  virtual void buildCoeffApplierDeviceOwnedDataStructures();
+  virtual void buildCoeffApplierDeviceSharedDataStructures();
+  virtual void buildCoeffApplierDeviceDataStructures();
+  virtual void computeRowSizes();
+  virtual void fill_hids_columns(
+    const unsigned numNodes,
+    stk::mesh::Entity const* nodes,
+    std::vector<HypreIntType>& hids,
+    std::vector<HypreIntType>& columns);
+  virtual void fill_owned_shared_data_structures_1DoF(
+    const unsigned numNodes, std::vector<HypreIntType>& hids);
+  virtual void fill_owned_shared_data_structures(
+    const unsigned numNodes,
+    std::vector<HypreIntType>& hids,
+    std::vector<HypreIntType>& columns);
+
+  /***************************************************************************************************/
+  /*                     Beginning of HypreLinSysCoeffApplier definition */
+  /***************************************************************************************************/
+
+  class HypreLinSysCoeffApplier : public CoeffApplier
+  {
+  public:
+    HypreLinSysCoeffApplier(
+      unsigned numDof, unsigned nDim, HypreIntType iLower, HypreIntType iUpper);
+
+    KOKKOS_DEFAULTED_FUNCTION
+    virtual ~HypreLinSysCoeffApplier() = default;
+
+    KOKKOS_FUNCTION
+    virtual void reset_rows(
+      unsigned numNodes,
+      const stk::mesh::Entity* nodeList,
+      const double diag_value,
+      const double rhs_residual,
+      const HypreIntType iLower,
+      const HypreIntType iUpper,
+      const unsigned numDof,
+      HypreIntType memShift);
+
+    KOKKOS_FUNCTION
+    virtual void resetRows(
+      unsigned numNodes,
+      const stk::mesh::Entity* nodeList,
+      const unsigned,
+      const unsigned,
+      const double diag_value,
+      const double rhs_residual);
+
+    KOKKOS_FUNCTION
+    virtual void sort(
+      const SharedMemView<int*, DeviceShmem>& localIds,
+      const SharedMemView<int*, DeviceShmem>& sortPermutation,
+      unsigned N);
+
+    KOKKOS_FUNCTION
+    virtual void sum_into(
+      unsigned numEntities,
+      const stk::mesh::NgpMesh::ConnectedNodes& entities,
+      const SharedMemView<int*, DeviceShmem>& localIds,
+      const SharedMemView<int*, DeviceShmem>& sortPermutation,
+      const SharedMemView<const double*, DeviceShmem>& rhs,
+      const SharedMemView<const double**, DeviceShmem>& lhs,
+      const HypreIntType& iLower,
+      const HypreIntType& iUpper,
+      unsigned numDof,
+      HypreIntType memShift);
+
+    KOKKOS_FUNCTION
+    virtual void sum_into_1DoF(
+      unsigned numEntities,
+      const stk::mesh::NgpMesh::ConnectedNodes& entities,
+      const SharedMemView<int*, DeviceShmem>& localIds,
+      const SharedMemView<int*, DeviceShmem>& sortPermutation,
+      const SharedMemView<const double*, DeviceShmem>& rhs,
+      const SharedMemView<const double**, DeviceShmem>& lhs,
+      const HypreIntType& iLower,
+      const HypreIntType& iUpper,
+      HypreIntType memShift);
+
+    KOKKOS_FUNCTION
+    virtual void operator()(
+      unsigned numEntities,
+      const stk::mesh::NgpMesh::ConnectedNodes& entities,
+      const SharedMemView<int*, DeviceShmem>& localIds,
+      const SharedMemView<int*, DeviceShmem>& sortPermutation,
+      const SharedMemView<const double*, DeviceShmem>& rhs,
+      const SharedMemView<const double**, DeviceShmem>& lhs,
+      const char* trace_tag);
+
+    virtual void free_device_pointer();
+
+    virtual sierra::nalu::CoeffApplier* device_pointer();
+
+    //! mesh
+    stk::mesh::NgpMesh ngpMesh_;
+    //! stk mesh field for the Hypre Global Id
+    NGPHypreIDFieldType ngpHypreGlobalId_;
+    //! number of degrees of freedom
+    unsigned numDof_ = 0;
+    //! number of rhs vectors
+    unsigned nDim_ = 0;
+    //! The lowest row owned by this MPI rank
+    HypreIntType iLower_ = 0;
+    //! The highest row owned by this MPI rank
+    HypreIntType iUpper_ = 0;
+
+    /* monolithic data structures for holding all the values for
+       the owned and shared parts. Shared MUST come after owned. */
+    DoubleViewUVM values_uvm_;
+    HypreIntTypeViewUVM cols_uvm_;
+    DoubleView2DUVM rhs_uvm_;
+
+    //! Data structures for the owned CSR Matrix and RHS Vector(s)
+    HypreIntType num_rows_owned_;
+    HypreIntType num_nonzeros_owned_;
+    UnsignedView mat_row_start_owned_;
+    HypreIntTypeView periodic_bc_rows_owned_;
+
+    //! Data structures for the shared CSR Matrix and RHS Vector(s)
+    HypreIntType num_rows_shared_;
+    HypreIntType num_nonzeros_shared_;
+    MemoryMap map_shared_;
+    UnsignedView mat_row_start_shared_;
+    UnsignedView rhs_row_start_shared_;
+
+    //! Random access views
+    UnsignedViewRA mat_row_start_owned_ra_;
+    UnsignedViewRA mat_row_start_shared_ra_;
+    HypreIntTypeViewRA cols_uvm_ra_;
+
+    //! Auxilliary Data structures
+
+    //! map of the periodic nodes to hypre ids
+    PeriodicNodeMap periodic_node_to_hypre_id_;
+
+    //! Flag indicating that sumInto should check to see if rows must be skipped
+    HypreIntTypeViewScalar checkSkippedRows_;
+    //! unordered map for skipped rows
+    HypreIntTypeUnorderedMap skippedRowsMap_;
+    HypreIntTypeUnorderedMapHost skippedRowsMapHost_;
+
+    //! unordered map for overset rows
+    HypreIntTypeUnorderedMap oversetRowsMap_;
+    HypreIntTypeUnorderedMapHost oversetRowsMapHost_;
+
+    //! this is the pointer to the device function ... that assembles the lists
+    HypreLinSysCoeffApplier* devicePointer_;
+
+    /* flag to reinitialize or not */
+    bool reinitialize_ = true;
+
+    //! number of points in the overset data structures
+    HypreIntType num_mat_overset_pts_owned_;
+    HypreIntType num_rhs_overset_pts_owned_;
+
+    /* Work space for overset. These are used to accumulate data from legacy,
+     * non-NGP sumInto calls */
+    HypreIntTypeView d_overset_row_indices_;
+    HypreIntTypeViewHost h_overset_row_indices_;
+
+    HypreIntTypeView d_overset_rows_;
+    HypreIntTypeView d_overset_cols_;
+    HypreIntTypeViewHost h_overset_rows_;
+    HypreIntTypeViewHost h_overset_cols_;
+
+    DoubleView d_overset_vals_;
+    DoubleViewHost h_overset_vals_;
+
+    DoubleView d_overset_rhs_vals_;
+    DoubleViewHost h_overset_rhs_vals_;
+
+    /* counters for adding to the array */
+    int overset_mat_counter_ = 0;
+    int overset_rhs_counter_ = 0;
+  };
+
+  /***************************************************************************************************/
+  /*                        End of of HypreLinSysCoeffApplier definition */
+  /***************************************************************************************************/
 
   /** Update coefficients of a particular row(s) in the linear system
    *
@@ -140,30 +452,27 @@ public:
    *  @param[in] trace_tag Debugging message
    */
   virtual void sumInto(
-    const std::vector<stk::mesh::Entity> & sym_meshobj,
-    std::vector<int> &scratchIds,
-    std::vector<double> &scratchVals,
-    const std::vector<double> & rhs,
-    const std::vector<double> & lhs,
-    const char *trace_tag
-  );
+    const std::vector<stk::mesh::Entity>& sym_meshobj,
+    std::vector<int>& scratchIds,
+    std::vector<double>& scratchVals,
+    const std::vector<double>& rhs,
+    const std::vector<double>& lhs,
+    const char* trace_tag);
 
-  /** Populate the LHS and RHS for the Dirichlet rows in linear system
-   */
-  virtual void applyDirichletBCs(
-    stk::mesh::FieldBase * solutionField,
-    stk::mesh::FieldBase * bcValuesField,
-    const stk::mesh::PartVector & parts,
-    const unsigned beginPos,
-    const unsigned endPos);
+  /*****************************************/
+  /* Legacy methods needed for Compilation */
+  /*****************************************/
+  virtual void sumInto(
+    unsigned /*numEntities*/,
+    const stk::mesh::NgpMesh::ConnectedNodes& /*entities*/,
+    const SharedMemView<const double*, DeviceShmem>& /*rhs*/,
+    const SharedMemView<const double**, DeviceShmem>& /*lhs*/,
+    const SharedMemView<int*, DeviceShmem>& /*localIds*/,
+    const SharedMemView<int*, DeviceShmem>& /*sortPermutation*/,
+    const char* /*trace_tag*/)
+  {
+  }
 
-  /** Prepare assembly for Dirichlet-type rows
-   *
-   *  Dirichlet rows are skipped over by the sumInto method when the interior
-   *  parts are processed. This method toggles the flag alerting the sumInto
-   *  method that the Dirichlet rows will be processed next and sumInto can
-   *  proceed.
-   */
   virtual void resetRows(
     const std::vector<stk::mesh::Entity>&,
     const unsigned,
@@ -171,7 +480,6 @@ public:
     const double,
     const double)
   {
-    checkSkippedRows_ = false;
   }
 
   virtual void resetRows(
@@ -182,27 +490,16 @@ public:
     const double,
     const double)
   {
-    checkSkippedRows_ = false;
   }
 
-  /** Solve the system Ax = b
-   *
-   *  The solution vector is returned in linearSolutionField
-   *
-   *  @param[out] linearSolutionField STK field where the solution is populated
-   */
-  virtual int solve(stk::mesh::FieldBase * linearSolutionField);
-
-  /** Finalize construction of the linear system matrix and rhs vector
-   *
-   *  This method calls the appropriate Hypre functions to assemble the matrix
-   *  and rhs in a parallel run, as well as registers the matrix and rhs with
-   *  the solver preconditioner.
-   */
-  virtual void loadComplete();
-
-  virtual void writeToFile(const char * /* filename */, bool /* useOwned */ =true) {}
-  virtual void writeSolutionToFile(const char * /* filename */, bool /* useOwned */ =true) {}
+  virtual void
+  writeToFile(const char* /* filename */, bool /* useOwned */ = true)
+  {
+  }
+  virtual void
+  writeSolutionToFile(const char* /* filename */, bool /* useOwned */ = true)
+  {
+  }
 
 protected:
   /** Prepare the instance for system construction
@@ -225,53 +522,18 @@ protected:
    */
   HypreIntType get_entity_hypre_id(const stk::mesh::Entity&);
 
-  //! Helper method to transfer the solution from a HYPRE_IJVector instance to
-  //! the STK field data instance.
-  double copy_hypre_to_stk(stk::mesh::FieldBase*);
-
-  /** Flags indicating whether a particular row in the HYPRE matrix has been
-   * filled or not.
-   */
-  enum RowFillStatus
-  {
-    RS_UNFILLED = 0, //!< Default status
-    RS_FILLED        //!< sumInto filps to filled status once a row has been acted on
-  };
-
-  /** Flag indicating the type of row.
-   *
-   *  This flag is used to determine if the normal sumInto approach is used to
-   *  populate the row, or a special method is used to handle that row. sumInto
-   *  method will skip over the rows not marked RT_NORMAL and must be dealt with
-   *  separately by other algorithms.
-   */
-  enum RowStatus
-  {
-    RT_NORMAL = 0, //!< A normal row that is summed into using sumInto
-    RT_DIRICHLET,  //!< Rows with Dirichlet BC; no off-diagonal entries
-    RT_OVERSET     //!< Overset fringe points; interpolation weights from other mesh
-  };
-
   /** Dummy method to satisfy inheritance
    */
-  void checkError(
-    const int,
-    const char*) {}
+  void checkError(const int, const char*) {}
 
   //! The HYPRE matrix data structure
   mutable HYPRE_IJMatrix mat_;
 
-  //! Track rows that have been updated during the assembly process
-  std::vector<RowFillStatus> rowFilled_;
-
-  //! Track the status of rows
-  std::vector<RowStatus> rowStatus_;
-
   //! Track which rows are skipped
   std::unordered_set<HypreIntType> skippedRows_;
 
-  //! Buffer for handling Global Row IDs for use in sumInto methods
-  std::vector<HypreIntType> idBuffer_;
+  //! Track which rows are skipped
+  std::unordered_set<HypreIntType> oversetRows_;
 
   //! The lowest row owned by this MPI rank
   HypreIntType iLower_;
@@ -283,6 +545,10 @@ protected:
   HypreIntType jUpper_;
   //! Total number of rows owned by this particular MPI rank
   HypreIntType numRows_;
+  //! Total number of rows owned by this particular MPI rank
+  HypreIntType globalNumRows_;
+  //! Store the rank as class data so it's easy to reference
+  int rank_;
   //! Maximum Row ID in the Hypre linear system
   HypreIntType maxRowID_;
 
@@ -292,11 +558,8 @@ protected:
   //! Flag indicating whether the linear system has been initialized
   bool systemInitialized_{false};
 
-  //! Flag indicating that sumInto should check to see if rows must be skipped
-  bool checkSkippedRows_{false};
-
-  //! Flag indicating that dirichlet and/or overset rows are present for this system
-  bool hasSkippedRows_{false};
+  //! Flag indicating whether the linear system has been initialized
+  bool matrixStatsDumped_{false};
 
 private:
   //! HYPRE right hand side data structure
@@ -304,11 +567,9 @@ private:
 
   //! HYPRE solution vector
   mutable HYPRE_IJVector sln_;
-
 };
 
-}  // nalu
-}  // sierra
-
+} // namespace nalu
+} // namespace sierra
 
 #endif /* HYPRELINEARSYSTEM_H */

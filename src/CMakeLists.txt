@@ -1,62 +1,34 @@
 target_sources(nalu PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/ABLProfileFunction.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/actuator/Actuator.C
    ${CMAKE_CURRENT_SOURCE_DIR}/Algorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AlgorithmDriver.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleContinuityElemOpenSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleContinuityElemSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleContinuityInflowSolverAlgorithm.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/AMSAlgDriver.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleContinuityNonConformalSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleElemSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleFaceElemSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleEdgeSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleHeatCondIrradWallSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleHeatCondWallSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumEdgeWallFunctionSolverAlgoirthm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumElemABLWallFunctionSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumElemOpenSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumElemSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumElemSymmetrySolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumElemWallFunctionSolverAlgoirthm.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumEdgeWallFunctionSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumNonConformalSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradAlgorithmDriver.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradBoundaryAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradEdgeAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradElemAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradNonConformalAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradUAlgorithmDriver.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradUBoundaryAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradUElemAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodalGradUNonConformalAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNodeSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleNGPNodeSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssemblePNGBoundarySolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssemblePNGElemSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssemblePNGNonConformalSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarDiffNonConformalSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarEdgeDiffSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarEdgeOpenSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarEigenEdgeSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarElemDiffSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarElemOpenSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarElemSolverAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarFluxBCSolverAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleScalarNonConformalSolverAlgorithm.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleWallDistNonConformalAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AssembleWallHeatTransferAlgorithmDriver.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AuxFunctionAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/AveragingInfo.C
    ${CMAKE_CURRENT_SOURCE_DIR}/BoundaryConditions.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ComputeHeatTransferEdgeWallAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/ComputeHeatTransferElemWallAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/ComputeMdotElemAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/ComputeMdotElemOpenAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/ComputeMdotElemOpenPenaltyAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ComputeMdotNonConformalAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ComputeSSTMaxLengthScaleElemAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ComputeWallFrictionVelocityAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ConstantAuxFunction.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ContinuityLowSpeedCompressibleNodeSuppAlg.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/ContinuityMassElemSuppAlgDep.C
    ${CMAKE_CURRENT_SOURCE_DIR}/CopyFieldAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/CoriolisSrc.C
    ${CMAKE_CURRENT_SOURCE_DIR}/DataProbePostProcessing.C
@@ -72,29 +44,22 @@ target_sources(nalu PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/EnthalpyViscousWorkNodeSuppAlg.C
    ${CMAKE_CURRENT_SOURCE_DIR}/EquationSystem.C
    ${CMAKE_CURRENT_SOURCE_DIR}/EquationSystems.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/ErrorIndicatorAlgorithmDriver.C
    ${CMAKE_CURRENT_SOURCE_DIR}/FieldFunctions.C
    ${CMAKE_CURRENT_SOURCE_DIR}/FixPressureAtNodeAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/HeatCondEquationSystem.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/HeatCondMassBDF2NodeSuppAlg.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/HeatCondMassBackwardEulerNodeSuppAlg.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/GammaEquationSystem.C
    ${CMAKE_CURRENT_SOURCE_DIR}/InitialConditions.C
    ${CMAKE_CURRENT_SOURCE_DIR}/InputOutputRealm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/InterfaceBalancer.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/LimiterErrorIndicatorElemAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/LinearSolver.C
    ${CMAKE_CURRENT_SOURCE_DIR}/LinearSolverConfig.C
    ${CMAKE_CURRENT_SOURCE_DIR}/LinearSolvers.C
    ${CMAKE_CURRENT_SOURCE_DIR}/LinearSystem.C
    ${CMAKE_CURRENT_SOURCE_DIR}/LowMachEquationSystem.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/MassFractionEquationSystem.C
    ${CMAKE_CURRENT_SOURCE_DIR}/MaterialProperty.C
    ${CMAKE_CURRENT_SOURCE_DIR}/MaterialPropertys.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/MixtureFractionEquationSystem.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/MatrixFreeHeatCondEquationSystem.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/MatrixFreeLowMachEquationSystem.C
    ${CMAKE_CURRENT_SOURCE_DIR}/MomentumBoussinesqRASrcNodeSuppAlg.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/MomentumBuoyancySrcElemSuppAlgDep.C
    ${CMAKE_CURRENT_SOURCE_DIR}/MomentumBuoyancySrcNodeSuppAlg.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/MomentumMassElemSuppAlgDep.C
    ${CMAKE_CURRENT_SOURCE_DIR}/MovingAveragePostProcessor.C
    ${CMAKE_CURRENT_SOURCE_DIR}/NaluEnv.C
    ${CMAKE_CURRENT_SOURCE_DIR}/NaluParsing.C
@@ -105,15 +70,11 @@ target_sources(nalu PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/PeriodicManager.C
    ${CMAKE_CURRENT_SOURCE_DIR}/PostProcessingInfo.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ProjectedNodalGradientEquationSystem.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/PstabErrorIndicatorEdgeAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/PstabErrorIndicatorElemAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/Realm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/Realms.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/ScalarMassElemSuppAlgDep.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ScratchViews.C
    ${CMAKE_CURRENT_SOURCE_DIR}/ShearStressTransportEquationSystem.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/SimpleErrorIndicatorElemAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/SimpleErrorIndicatorScalarElemAlgorithm.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/SideWriter.C
    ${CMAKE_CURRENT_SOURCE_DIR}/Simulation.C
    ${CMAKE_CURRENT_SOURCE_DIR}/SolutionNormPostProcessing.C
    ${CMAKE_CURRENT_SOURCE_DIR}/SolutionOptions.C
@@ -124,32 +85,20 @@ target_sources(nalu PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceForceAndMomentAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceForceAndMomentAlgorithmDriver.C
    ${CMAKE_CURRENT_SOURCE_DIR}/SurfaceForceAndMomentWallFunctionAlgorithm.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/TAMSAlgDriver.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TimeIntegrator.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TpetraLinearSystem.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TpetraLinearSystemHelpers.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TpetraSegregatedLinearSystem.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TurbKineticEnergyEquationSystem.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/TurbKineticEnergyKsgsBuoyantElemSuppAlg.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TurbViscSmagorinskyAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TurbViscWaleAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/TurbulenceAveragingPostProcessing.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/AssembleWallDistNonConformalAlgorithm.C
    ${CMAKE_CURRENT_SOURCE_DIR}/WallDistEquationSystem.C
 )
 
 if(ENABLE_FFTW)
    target_sources(nalu PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/AssembleMomentumEdgeABLTopBC.C
-   )
-endif()
-
-if(ENABLE_OPENFAST)
-   target_sources(nalu PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/actuator/UtilitiesActuator.C
-      ${CMAKE_CURRENT_SOURCE_DIR}/actuator/ActuatorFAST.C
-      ${CMAKE_CURRENT_SOURCE_DIR}/actuator/ActuatorLineFAST.C
-      ${CMAKE_CURRENT_SOURCE_DIR}/actuator/ActuatorDiskFAST.C
    )
 endif()
 
@@ -163,24 +112,18 @@ if(ENABLE_HYPRE)
    )
 endif()
 
-if(ENABLE_PARAVIEW_CATALYST)
-   target_sources(nalu PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/Adapter.C
-   )
-endif()
-
+add_subdirectory(actuator)
 add_subdirectory(element_promotion)
+add_subdirectory(matrix_free)
 add_subdirectory(kernel)
 add_subdirectory(edge_kernels)
 add_subdirectory(node_kernels)
 add_subdirectory(master_element)
 add_subdirectory(mesh_motion)
+add_subdirectory(gcl)
 add_subdirectory(ngp_algorithms)
-add_subdirectory(nso)
 add_subdirectory(overset)
-add_subdirectory(pmr)
 add_subdirectory(property_evaluator)
-add_subdirectory(tabular_props)
 add_subdirectory(utils)
 add_subdirectory(user_functions)
 add_subdirectory(xfer)

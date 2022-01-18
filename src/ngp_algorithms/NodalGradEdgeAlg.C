@@ -11,8 +11,10 @@
 #include "ngp_algorithms/NodalGradEdgeAlg.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldOps.h"
+#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "utils/StkHelpers.h"
+#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -38,7 +40,7 @@ NodalGradEdgeAlg<PhiType, GradPhiType>::NodalGradEdgeAlg(
 template <typename PhiType, typename GradPhiType>
 void NodalGradEdgeAlg<PhiType, GradPhiType>::execute()
 {
-  using EntityInfoType = nalu_ngp::EntityInfo<ngp::Mesh>;
+  using EntityInfoType = nalu_ngp::EntityInfo<stk::mesh::NgpMesh>;
   const auto& meshInfo = realm_.mesh_info();
   const auto& meta = meshInfo.meta();
   const auto ngpMesh = meshInfo.ngp_mesh();
@@ -57,6 +59,8 @@ void NodalGradEdgeAlg<PhiType, GradPhiType>::execute()
   // Bring class members into local scope for device capture
   const int dim1 = dim1_;
   const int dim2 = dim2_;
+
+  gradPhi.sync_to_device();
 
   const std::string algName = meta.get_fields()[gradPhi_]->name() + "_edge";
   nalu_ngp::run_edge_algorithm(
@@ -86,6 +90,7 @@ void NodalGradEdgeAlg<PhiType, GradPhiType>::execute()
         }
       }
     });
+  gradPhi.modify_on_device();
 }
 
 template class NodalGradEdgeAlg<ScalarFieldType, VectorFieldType>;

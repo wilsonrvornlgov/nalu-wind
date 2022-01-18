@@ -25,7 +25,8 @@
 #include <stk_mesh/base/Entity.hpp>
 #include <stk_mesh/base/FieldBase.hpp>
 
-#include <stk_ngp/Ngp.hpp>
+#include <stk_mesh/base/Ngp.hpp>
+#include <stk_mesh/base/NgpMesh.hpp>
 
 #include <vector>
 #include <string>
@@ -79,7 +80,7 @@ public:
 
   void sumInto(
     unsigned numEntities,
-    const ngp::Mesh::ConnectedNodes& entities,
+    const stk::mesh::NgpMesh::ConnectedNodes& entities,
     const SharedMemView<const double*,DeviceShmem> & rhs,
     const SharedMemView<const double**,DeviceShmem> & lhs,
     const SharedMemView<int*,DeviceShmem> & localIds,
@@ -165,8 +166,8 @@ public:
       devicePointer_(nullptr)
     {}
 
-    KOKKOS_FUNCTION
-    ~TpetraLinSysCoeffApplier() {}
+    KOKKOS_DEFAULTED_FUNCTION
+    ~TpetraLinSysCoeffApplier() = default;
 
     KOKKOS_FUNCTION
     virtual void resetRows(unsigned numNodes,
@@ -178,7 +179,7 @@ public:
 
     KOKKOS_FUNCTION
     virtual void operator()(unsigned numEntities,
-                            const ngp::Mesh::ConnectedNodes& entities,
+                            const stk::mesh::NgpMesh::ConnectedNodes& entities,
                             const SharedMemView<int*,DeviceShmem> & localIds,
                             const SharedMemView<int*,DeviceShmem> & sortPermutation,
                             const SharedMemView<const double*,DeviceShmem> & rhs,

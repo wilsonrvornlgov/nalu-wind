@@ -1,7 +1,7 @@
 #ifndef MESHMOTIONALG_H
 #define MESHMOTIONALG_H
 
-#include "FrameBase.h"
+#include "FrameMoving.h"
 
 namespace sierra{
 namespace nalu{
@@ -23,6 +23,10 @@ public:
 
   void post_compute_geometry();
 
+  stk::mesh::PartVector get_partvec();
+
+  bool is_deforming(){ return isDeforming_; }
+
 private:
   MeshMotionAlg() = delete;
   MeshMotionAlg(const MeshMotionAlg&) = delete;
@@ -31,24 +35,20 @@ private:
     stk::mesh::BulkData&,
     const YAML::Node&);
 
-  void compute_set_centroid();
+  void set_deformation_flag();
 
-  /** Motion frame vector
+  /** Moving frame vector
    *
-   *  Vector of type of frame of corresponding motion
-   *  Size is the number of motion groups in input file
+   *  Vector of moving frames
+   *  Size is the number of groups under mesh_motion in input file
    */
-  std::vector<std::shared_ptr<FrameBase>> frameVec_;
-
-  /** Reference frame map
-   *
-   *  Map between frame indices and corresponding reference frame
-   *  Size is the number of motion groups with reference frames
-   */
-  std::map<int, std::shared_ptr<FrameBase>> refFrameMap_;
+  std::vector<std::shared_ptr<FrameMoving>> movingFrameVec_;
 
   //! flag to guard against multiple invocations of initialize()
   bool isInit_ = false;
+
+  //! flag to denote if mesh deformation exists
+  bool isDeforming_ = false;
 };
 
 } // nalu

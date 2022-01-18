@@ -22,8 +22,9 @@
 #include "ScratchViews.h"
 #include "SharedMemData.h"
 
-#include "stk_ngp/Ngp.hpp"
+#include "stk_mesh/base/Ngp.hpp"
 #include "stk_mesh/base/Entity.hpp"
+#include "stk_mesh/base/Types.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -45,11 +46,11 @@ struct EdgeKernelTraits
 class EdgeKernel
 {
 public:
-  KOKKOS_FORCEINLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   EdgeKernel() = default;
 
-  KOKKOS_FUNCTION
-  virtual ~EdgeKernel() {}
+  KOKKOS_DEFAULTED_FUNCTION
+  virtual ~EdgeKernel() = default;
 
   virtual EdgeKernel* create_on_device() = 0;
 
@@ -69,10 +70,10 @@ template <typename T>
 class NGPEdgeKernel : public EdgeKernel
 {
 public:
-  KOKKOS_FORCEINLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   NGPEdgeKernel() = default;
 
-  KOKKOS_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   virtual ~NGPEdgeKernel() = default;
 
   virtual EdgeKernel* create_on_device() final

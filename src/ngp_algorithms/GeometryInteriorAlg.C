@@ -15,10 +15,12 @@
 #include "ngp_algorithms/ViewHelper.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldOps.h"
+#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "ScratchViews.h"
 #include "SolutionOptions.h"
 #include "utils/StkHelpers.h"
+#include "stk_mesh/base/NgpMesh.hpp"
 
 
 namespace sierra {
@@ -65,7 +67,7 @@ void GeometryInteriorAlg<AlgTraits>::execute()
 template <typename AlgTraits>
 void GeometryInteriorAlg<AlgTraits>::impl_compute_dual_nodal_volume()
 {
-  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
+  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
 
   const auto& meshInfo = realm_.mesh_info();
   const auto& meta = meshInfo.meta();
@@ -76,6 +78,8 @@ void GeometryInteriorAlg<AlgTraits>::impl_compute_dual_nodal_volume()
   const auto dnvOps = nalu_ngp::simd_elem_nodal_field_updater(ngpMesh, dualVol);
   const auto elemVolOps = nalu_ngp::simd_elem_field_updater(ngpMesh, elemVol);
   MasterElement *meSCV = meSCV_;
+  dualVol.sync_to_device();
+  elemVol.sync_to_device();
 
   const stk::mesh::Selector sel = meta.locally_owned_part()
     & stk::mesh::selectUnion(partVec_)
@@ -105,7 +109,7 @@ void GeometryInteriorAlg<AlgTraits>::impl_compute_dual_nodal_volume()
 template<typename AlgTraits>
 void GeometryInteriorAlg<AlgTraits>::impl_negative_jacobian_check()
 {
-  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
+  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
 
   const auto& meshInfo = realm_.mesh_info();
   const auto& meta = meshInfo.meta();
@@ -134,16 +138,18 @@ void GeometryInteriorAlg<AlgTraits>::impl_negative_jacobian_check()
     }, reducer);
 
   if (numNegVol > 0) {
+    const stk::topology topology(AlgTraits::topo_);
     throw std::runtime_error(
       "GeometryInteriorAlg encountered " + std::to_string(numNegVol) +
-      " negative sub-control volumes for topology " + std::to_string(AlgTraits::topo_));
+      " negative sub-control volumes for topology " + std::to_string(AlgTraits::topo_)+ 
+      "  name: " + topology.char_name());
   }
 }
 
 template <typename AlgTraits>
 void GeometryInteriorAlg<AlgTraits>::impl_compute_edge_area_vector()
 {
-  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
+  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
 
   const auto& meshInfo = realm_.mesh_info();
   const auto& meta = meshInfo.meta();

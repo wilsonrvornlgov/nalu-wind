@@ -25,7 +25,10 @@ class WallFuncGeometryAlg : public Algorithm
 public:
   using DblType = double;
 
-  WallFuncGeometryAlg(Realm&, stk::mesh::Part*);
+  WallFuncGeometryAlg(Realm&, 
+    stk::mesh::Part*,
+    bool = false,
+    double = 0.0);
 
   virtual ~WallFuncGeometryAlg() = default;
 
@@ -41,8 +44,13 @@ private:
   unsigned wallArea_ {stk::mesh::InvalidOrdinal};
   unsigned wallNormDist_ {stk::mesh::InvalidOrdinal};
 
+  static constexpr DblType wallNormalHeightFactor{1.0};
+
   MasterElement* meFC_{nullptr};
   MasterElement* meSCS_{nullptr};
+
+  bool RANSAblBcApproach_;
+  double z0_;
 };
 
 }  // nalu

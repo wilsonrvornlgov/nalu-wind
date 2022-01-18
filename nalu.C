@@ -25,6 +25,7 @@
 // input params
 #include <stk_util/environment/OptionsSpecification.hpp> 
 #include <stk_util/environment/ParseCommandLineArgs.hpp> 
+#include <stk_util/environment/ParsedOptions.hpp>
 
 // yaml for parsing..
 #include <yaml-cpp/yaml.h>
@@ -37,6 +38,8 @@
 #include <fstream>
 #include <iomanip>
 #include <stdexcept>
+
+#include "HypreNGP.h"
 
 static std::string human_bytes_double(double bytes)
 {
@@ -72,7 +75,12 @@ int main( int argc, char ** argv )
 
   // NaluEnv singleton
   sierra::nalu::NaluEnv &naluEnv = sierra::nalu::NaluEnv::self();
+
   Kokkos::initialize(argc, argv);
+
+  // Hypre initialization
+  nalu_hypre::hypre_initialize();
+
   {
   
   stk::diag::setEnabledTimerMetricsMask(stk::diag::METRICS_CPU_TIME | stk::diag::METRICS_WALL_TIME);
@@ -146,7 +154,8 @@ int main( int argc, char ** argv )
     pprint = true;
   }
   // deal with log file stream
-  naluEnv.set_log_file_stream(logFileName, pprint);
+  const bool capture_stdout = true;
+  naluEnv.set_log_file_stream(logFileName, pprint, capture_stdout);
 
   // proceed with reading input file "document" from YAML
   YAML::Node doc = YAML::LoadFile(inputFileName.c_str());
@@ -243,7 +252,14 @@ int main( int argc, char ** argv )
   Teuchos::TimeMonitor::summarize(
     naluEnv.naluOutputP0(), false, true, false, Teuchos::Union);
   }
+
+  // Hypre cleanup
+  nalu_hypre::hypre_finalize();
+
   Kokkos::finalize_all();
+
+  MPI_Finalize();
+
   // all done  
   return 0;
 }

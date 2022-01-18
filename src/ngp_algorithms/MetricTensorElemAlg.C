@@ -7,7 +7,6 @@
 // for more details.
 //
 
-
 #include "ngp_algorithms/MetricTensorElemAlg.h"
 
 #include "BuildTemplates.h"
@@ -16,10 +15,12 @@
 #include "ngp_algorithms/ViewHelper.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldOps.h"
+#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "ScratchViews.h"
 #include "SolutionOptions.h"
 #include "utils/StkHelpers.h"
+#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -52,7 +53,8 @@ template <typename AlgTraits>
 void
 MetricTensorElemAlg<AlgTraits>::execute()
 {
-  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
+  using ElemSimdDataType =
+    sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
 
   const auto& meshInfo = realm_.mesh_info();
   const auto& meta = meshInfo.meta();
@@ -70,9 +72,8 @@ MetricTensorElemAlg<AlgTraits>::execute()
                                   !(realm_.get_inactive_selector());
 
   nalu_ngp::run_elem_algorithm(
-    "computeMetricTensorAlg",
-    meshInfo, stk::topology::ELEM_RANK, dataNeeded_, sel,
-    KOKKOS_LAMBDA(ElemSimdDataType & edata) {
+    "computeMetricTensorAlg", meshInfo, stk::topology::ELEM_RANK, dataNeeded_,
+    sel, KOKKOS_LAMBDA(ElemSimdDataType & edata) {
       auto& scrView = edata.simdScrView;
       const auto& meViews = scrView.get_me_views(CURRENT_COORDINATES);
       const auto& v_scv_volume = meViews.scv_volume;
@@ -84,9 +85,10 @@ MetricTensorElemAlg<AlgTraits>::execute()
         const int nearestNode = ipNodeMap[ip];
 
         for (int i = 0; i < AlgTraits::nDim_; ++i)
-          for (int j = 0; j < AlgTraits::nDim_; ++j)
+          for (int j = 0; j < AlgTraits::nDim_; ++j) {
             MijOps(edata, nearestNode, i * AlgTraits::nDim_ + j) +=
               v_scv_mij(ip, i, j) * v_scv_volume(ip) / v_dnv(ip);
+          }
       }
     });
 }

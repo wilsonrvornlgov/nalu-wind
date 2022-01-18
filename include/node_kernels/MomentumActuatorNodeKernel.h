@@ -14,7 +14,9 @@
 #include "node_kernels/NodeKernel.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_ngp/Ngp.hpp"
+#include "stk_mesh/base/Ngp.hpp"
+#include "stk_mesh/base/NgpField.hpp"
+#include "stk_mesh/base/Types.hpp"
 
 namespace sierra{
 namespace nalu{
@@ -24,10 +26,9 @@ class MomentumActuatorNodeKernel : public NGPNodeKernel<MomentumActuatorNodeKern
 public:
   MomentumActuatorNodeKernel(const stk::mesh::MetaData&);
 
-  KOKKOS_FUNCTION
-  MomentumActuatorNodeKernel() = default;
+  MomentumActuatorNodeKernel() = delete;
 
-  KOKKOS_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   virtual ~MomentumActuatorNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -39,9 +40,9 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  ngp::Field<double> dualNodalVolume_;
-  ngp::Field<double> actuatorSrc_;
-  ngp::Field<double> actuatorSrcLHS_;
+  stk::mesh::NgpField<double> dualNodalVolume_;
+  stk::mesh::NgpField<double> actuatorSrc_;
+  stk::mesh::NgpField<double> actuatorSrcLHS_;
   const int nDim_;
 
   const unsigned dualNodalVolumeID_ {stk::mesh::InvalidOrdinal};

@@ -17,6 +17,7 @@
 //==============================================================================
 
 #include <FieldTypeDef.h>
+#include <KokkosInterface.h>
 
 // stk
 #include <stk_mesh/base/Part.hpp>
@@ -73,7 +74,8 @@ class PeriodicManager {
     const unsigned &sizeOfField,
     const bool &bypassFieldCheck,
     const bool &addSlaves = true,
-    const bool &setSlaves = true);
+    const bool &setSlaves = true,
+    const bool &doCommunication = true) const;
 
   // find the max
   void apply_max_field(
@@ -86,9 +88,12 @@ class PeriodicManager {
 
   const stk::mesh::PartVector &get_slave_part_vector();
 
-  double get_search_time();
+  const stk::mesh::PartVector& periodic_parts_vector()
+  {
+    return periodicPartVec_;
+  }
 
-// private:
+  double get_search_time();
 
   void augment_periodic_selector_pairs();
 
@@ -121,7 +126,7 @@ class PeriodicManager {
 
   void
   ngp_periodic_parallel_communicate_field(
-    stk::mesh::FieldBase *theField);
+    stk::mesh::FieldBase *theField) const;
 
   /* communicate shared nodes and aura nodes */
   void
@@ -130,7 +135,7 @@ class PeriodicManager {
 
   void
   ngp_parallel_communicate_field(
-    stk::mesh::FieldBase *theField);
+    stk::mesh::FieldBase *theField) const;
 
   Realm &realm_;
 
@@ -159,17 +164,21 @@ class PeriodicManager {
   void ngp_add_slave_to_master(
     stk::mesh::FieldBase *theField,
     const unsigned &sizeOfField,
-    const bool &bypassFieldCheck);
+    const bool &bypassFieldCheck,
+    const bool &doCommunication) const;
 
   void ngp_set_slave_to_master(
     stk::mesh::FieldBase *theField,
     const unsigned &sizeOfField,
-    const bool &bypassFieldCheck);
+    const bool &bypassFieldCheck,
+    const bool &doCommunication) const;
 
  private:
 
   // vector of master:slave selector pairs
   std::vector<SelectorPair> periodicSelectorPairs_;
+
+  stk::mesh::PartVector periodicPartVec_;
 
   // vector of slave parts
   stk::mesh::PartVector slavePartVector_;

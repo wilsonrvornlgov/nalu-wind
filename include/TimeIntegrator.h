@@ -13,24 +13,24 @@
 #define TimeIntegrator_h
 
 #include <Enums.h>
-// yaml for parsing..
-#include <yaml-cpp/yaml.h>
-
 #include <vector>
 #include <string>
+#include <memory>
 
+namespace YAML { class Node; }
 
 namespace sierra{
 namespace nalu{
 
 class Realm;
 class Simulation;
+class ExtOverset;
 
 class TimeIntegrator
 {
 public:
 
-  TimeIntegrator() {}
+  TimeIntegrator();
   TimeIntegrator(Simulation* sim);
   ~TimeIntegrator();
 
@@ -45,6 +45,12 @@ public:
   void integrate_realm();
   void provide_mean_norm();
   bool simulation_proceeds();
+
+  void prepare_for_time_integration();
+  void pre_realm_advance_stage1();
+  void pre_realm_advance_stage2();
+  void post_realm_advance();
+
   Simulation* sim_{nullptr};
 
   double totalSimTime_;
@@ -81,7 +87,8 @@ public:
   double get_total_sim_time();
   int get_max_time_step_count();
   void compute_gamma();
- 
+
+  std::unique_ptr<ExtOverset> overset_;
 };
 
 } // namespace nalu

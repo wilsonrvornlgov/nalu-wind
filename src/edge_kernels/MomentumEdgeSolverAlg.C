@@ -14,6 +14,8 @@
 #include "SolutionOptions.h"
 #include "utils/StkHelpers.h"
 #include "edge_kernels/EdgeKernelUtils.h"
+#include "stk_mesh/base/NgpField.hpp"
+#include "stk_mesh/base/Types.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -34,18 +36,18 @@ MomentumEdgeSolverAlg::MomentumEdgeSolverAlg(
   velocity_ = get_field_ordinal(meta, velName, stk::mesh::StateNP1);
 
   std::string viscName;
-  if ((realm.is_turbulent()) && (realm.solutionOptions_->turbulenceModel_ != SST_TAMS))
+  if ((realm.is_turbulent()) && (realm.solutionOptions_->turbulenceModel_ != SST_AMS))
        viscName = "effective_viscosity_u";
   else 
        viscName = "viscosity";
 
   viscosity_ = get_field_ordinal(meta, viscName);
-  density_ = get_field_ordinal(meta, "density", stk::mesh::StateNP1);
   dudx_ = get_field_ordinal(meta, "dudx");
   edgeAreaVec_ = get_field_ordinal(meta, "edge_area_vector", stk::topology::EDGE_RANK);
   massFlowRate_ = get_field_ordinal(meta, "mass_flow_rate", stk::topology::EDGE_RANK);
-
-  pecletFunction_ = eqSystem->ngp_create_peclet_function<double>(velName);
+  pecletFactor_ =
+    get_field_ordinal(meta, "peclet_factor", stk::topology::EDGE_RANK);
+  maskNodeField_ = get_field_ordinal(meta, "abl_wall_no_slip_wall_func_node_mask", stk::topology::NODE_RANK);
 }
 
 void
@@ -62,31 +64,27 @@ MomentumEdgeSolverAlg::execute()
   const DblType relaxFacU = realm_.solutionOptions_->get_relaxation_factor(dofName);
   const bool useLimiter = realm_.primitive_uses_limiter(dofName);
 
-  const DblType om_alpha = 1.0 - alpha;
+  const DblType om_alpha    = 1.0 - alpha;
   const DblType om_alphaUpw = 1.0 - alphaUpw;
 
-  // STK ngp::Field instances for capture by lambda
-  const auto& fieldMgr = realm_.ngp_field_manager();
-  const auto coordinates = fieldMgr.get_field<double>(coordinates_);
-  const auto vrtm = fieldMgr.get_field<double>(velocityRTM_);
-  const auto vel = fieldMgr.get_field<double>(velocity_);
-  const auto dudx = fieldMgr.get_field<double>(dudx_);
-  const auto density = fieldMgr.get_field<double>(density_);
-  const auto viscosity = fieldMgr.get_field<double>(viscosity_);
-  const auto edgeAreaVec = fieldMgr.get_field<double>(edgeAreaVec_);
+  // STK stk::mesh::NgpField instances for capture by lambda
+  const auto& fieldMgr    = realm_.ngp_field_manager();
+  const auto coordinates  = fieldMgr.get_field<double>(coordinates_);
+  const auto vrtm         = fieldMgr.get_field<double>(velocityRTM_);
+  const auto vel          = fieldMgr.get_field<double>(velocity_);
+  const auto dudx         = fieldMgr.get_field<double>(dudx_);
+  const auto viscosity    = fieldMgr.get_field<double>(viscosity_);
+  const auto edgeAreaVec  = fieldMgr.get_field<double>(edgeAreaVec_);
   const auto massFlowRate = fieldMgr.get_field<double>(massFlowRate_);
-
-  // Local pointer for device capture
-  auto* pecFunc = pecletFunction_;
+  const auto pecletFactor = fieldMgr.get_field<double>(pecletFactor_);
+  const auto maskNodeField    = fieldMgr.get_field<double>(maskNodeField_);
 
   run_algorithm(
     realm_.bulk_data(),
     KOKKOS_LAMBDA(
-      ShmemDataType& smdata,
-      const stk::mesh::FastMeshIndex& edge,
+      ShmemDataType & smdata, const stk::mesh::FastMeshIndex& edge,
       const stk::mesh::FastMeshIndex& nodeL,
-      const stk::mesh::FastMeshIndex& nodeR)
-    {
+      const stk::mesh::FastMeshIndex& nodeR) {
       // Scratch work array for edgeAreaVector
       NALU_ALIGNED DblType av[NDimMax_];
       // Populate area vector work array
@@ -95,24 +93,18 @@ MomentumEdgeSolverAlg::execute()
 
       const DblType mdot = massFlowRate.get(edge, 0);
 
-      const DblType densityL = density.get(nodeL, 0);
-      const DblType densityR = density.get(nodeR, 0);
-
       const DblType viscosityL = viscosity.get(nodeL, 0);
       const DblType viscosityR = viscosity.get(nodeR, 0);
 
       const DblType viscIp = 0.5 * (viscosityL + viscosityR);
-      const DblType diffIp = 0.5 * (viscosityL / densityL + viscosityR / densityR);
 
       // Compute area vector related quantities and (U dot areaVec)
       DblType axdx = 0.0;
       DblType asq = 0.0;
-      DblType udotx = 0.0;
       for (int d=0; d < ndim; ++d) {
         const DblType dxj = coordinates.get(nodeR, d) - coordinates.get(nodeL, d);
         asq += av[d] * av[d];
         axdx += av[d] * dxj;
-        udotx += 0.5 * dxj * (vrtm.get(nodeR, d) + vrtm.get(nodeL, d));
       }
       const DblType inv_axdx = 1.0 / axdx;
 
@@ -132,8 +124,7 @@ MomentumEdgeSolverAlg::execute()
         }
       }
 
-      const DblType pecnum = stk::math::abs(udotx) / (diffIp + eps);
-      const DblType pecfac = pecFunc->execute(pecnum);
+      const DblType pecfac = pecletFactor.get(edge, 0);
       const DblType om_pecfac = 1.0 - pecfac;
 
       NALU_ALIGNED DblType limitL[NDimMax_] = { 1.0, 1.0, 1.0};
@@ -157,6 +148,7 @@ MomentumEdgeSolverAlg::execute()
         uIpR[d] = vel.get(nodeR, d) - duR[d] * hoUpwind * limitR[d];
       }
 
+      // TODO(psakiev) extract this a funciton into EdgeKernelUtils.h
       // Computation of duidxj term, reproduce original comment by S. P. Domino
       /*
         form duidxj with over-relaxed procedure of Jasak:
@@ -217,7 +209,9 @@ MomentumEdgeSolverAlg::execute()
         for (int j=0; j < ndim; ++j)
           diff_flux += -viscIp * (duidxj[i][j] + duidxj[j][i]) * av[j];
 
-        const DblType total_flux = adv_flux + diff_flux;
+        const DblType maskNode = stk::math::min(maskNodeField.get(nodeL, 0), maskNodeField.get(nodeR, 0));
+        const DblType total_flux = adv_flux + diff_flux * maskNode;
+
         smdata.rhs(rowL) -= total_flux;
         smdata.rhs(rowR) += total_flux;
 

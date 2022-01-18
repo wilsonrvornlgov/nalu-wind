@@ -16,10 +16,12 @@
 #include "ngp_algorithms/ViewHelper.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldOps.h"
+#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "ScratchViews.h"
 #include "SolutionOptions.h"
 #include "utils/StkHelpers.h"
+#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -58,7 +60,7 @@ NodalGradBndryElemAlg<AlgTraits, PhiType, GradPhiType>::NodalGradBndryElemAlg(
 template <typename AlgTraits, typename PhiType, typename GradPhiType>
 void NodalGradBndryElemAlg<AlgTraits, PhiType, GradPhiType>::execute()
 {
-  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
+  using ElemSimdDataType = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
   using ViewHelperType = nalu_ngp::ViewHelper<ElemSimdDataType, PhiType>;
 
   const auto& meshInfo = realm_.mesh_info();
@@ -76,6 +78,7 @@ void NodalGradBndryElemAlg<AlgTraits, PhiType, GradPhiType>::execute()
   const auto phiID = phi_;
   auto* meFC = meFC_;
 
+  gradPhi.sync_to_device();
   const stk::mesh::Selector sel = meta.locally_owned_part()
     & stk::mesh::selectUnion(partVec_);
 
@@ -113,6 +116,7 @@ void NodalGradBndryElemAlg<AlgTraits, PhiType, GradPhiType>::execute()
         }
       }
     });
+  gradPhi.modify_on_device();
 }
 
 // NOTE: Can't use BuildTemplates here because of additional template arguments

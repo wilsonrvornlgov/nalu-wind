@@ -52,6 +52,9 @@ public:
   //! Synchronize fields after algorithms have done their work
   virtual void post_work() override;
 
+  //! Pre work for mesh motion
+  virtual void mesh_motion_prework();
+
   /** Register wall function geometry calculation algorithm
    *
    *  Need a specialization here to track whether the user has requested wall functions
@@ -69,9 +72,14 @@ public:
     hasWallFunc_ = true;
   }
 
+  double total_volume() { return volStats_[2];}
+
 private:
   //! Flag to track whether wall functions are active
   bool hasWallFunc_{false};
+
+  //! Volume statistics
+  double volStats_[3] = { 0.0, 0.0, 0.0 };
 };
 
 }  // nalu

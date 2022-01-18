@@ -47,7 +47,22 @@ public:
 
   bool reduce_fringes() const { return reduceFringes_; }
 
+  /** Adjust resolutions for mandatory fringe nodes
+   *
+   *  If true, then the entities connected to overset sidesets have their
+   *  nodal/cell resolutions adjusted so that TIOGA will never consider these
+   *  cells as donors. This adjustment is necessary to avoid fringe/field
+   *  mismatch across domain partition boundaries.
+   */
+  bool adjust_resolutions() const { return adjustResolutionsForFringes_; }
+
+  double cell_res_mult() const { return cellResMult_; }
+  double node_res_mult() const { return nodeResMult_; }
+
 private:
+  double cellResMult_{1.0};
+  double nodeResMult_{1.0};
+
   //! Symmetry plane direction [1 = x; 2 = y; 3 = z]; default = 3
   int symmetryDir_{3};
 
@@ -80,6 +95,10 @@ private:
 
   //! Flag indicating whether user has set the mexclude variable
   bool hasMexclude_{false};
+
+  //! Flag indicating whether the node/cell resolutions should be adjusted for
+  //! mandatory fringes
+  bool adjustResolutionsForFringes_{true};
 };
 
 }

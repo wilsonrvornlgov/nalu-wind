@@ -11,7 +11,6 @@
 #define NODALGRADPOPENBOUNDARYALG_H
 
 #include<Algorithm.h>
-#include<FieldTypeDef.h>
 #include<ElemDataRequests.h>
 
 #include "stk_mesh/base/Types.hpp"
@@ -41,6 +40,7 @@ public:
   const unsigned pressureField_  {stk::mesh::InvalidOrdinal};
   const unsigned gradP_          {stk::mesh::InvalidOrdinal};
   const unsigned coordinates_    {stk::mesh::InvalidOrdinal};
+  const unsigned dynPress_       {stk::mesh::InvalidOrdinal};
 
   MasterElement* meFC_ {nullptr};
   MasterElement* meSCS_{nullptr};

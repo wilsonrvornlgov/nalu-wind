@@ -18,6 +18,7 @@
 #include <FieldTypeDef.h>
 
 #include <Kokkos_DefaultNode.hpp>
+#include <Kokkos_UnorderedMap.hpp>
 #include <Tpetra_MultiVector.hpp>
 #include <Tpetra_CrsMatrix.hpp>
 
@@ -25,7 +26,8 @@
 #include <stk_mesh/base/Entity.hpp>
 #include <stk_mesh/base/FieldBase.hpp>
 
-#include <stk_ngp/Ngp.hpp>
+#include <stk_mesh/base/Ngp.hpp>
+#include <stk_mesh/base/NgpMesh.hpp>
 
 #include <vector>
 #include <string>
@@ -70,6 +72,7 @@ public:
   void buildFaceElemToNodeGraph(const stk::mesh::PartVector & parts); // elem:face->node assembly
   void buildNonConformalNodeGraph(const stk::mesh::PartVector & parts); // nonConformal->node assembly
   void buildOversetNodeGraph(const stk::mesh::PartVector & parts); // overset->elem_node assembly
+  void buildSparsifiedEdgeElemToNodeGraph(const stk::mesh::Selector& sel); // edge connectivities for a sparsified hexahedral cell
   void storeOwnersForShared();
   void finalizeLinearSystem();
 
@@ -80,7 +83,7 @@ public:
 
   void sumInto(
     unsigned numEntities,
-    const ngp::Mesh::ConnectedNodes& entities,
+    const stk::mesh::NgpMesh::ConnectedNodes& entities,
     const SharedMemView<const double*,DeviceShmem> & rhs,
     const SharedMemView<const double**,DeviceShmem> & lhs,
     const SharedMemView<int*,DeviceShmem> & localIds,
@@ -149,10 +152,20 @@ public:
   int getRowLID(stk::mesh::Entity node) { return entityToLID_[node.local_offset()]; }
   int getColLID(stk::mesh::Entity node) { return entityToColLID_[node.local_offset()]; }
 
+  LinSys::ConstEntityToLIDView getRowLIDs() { return entityToLID_; }
+  LinSys::ConstEntityToLIDView getColLIDs() { return entityToColLID_; }
+  
   Teuchos::RCP<LinSys::Graph>  getOwnedGraph() { return ownedGraph_; }
   Teuchos::RCP<LinSys::Matrix> getOwnedMatrix() { return ownedMatrix_; }
   Teuchos::RCP<LinSys::MultiVector> getOwnedRhs() { return ownedRhs_; }
 
+  Teuchos::RCP<LinSys::Map> getOwnedRowsMap() { return ownedRowsMap_; }
+  Teuchos::RCP<LinSys::Map> getOwnedAndSharedRowsMap() { return ownedAndSharedRowsMap_; }
+
+  LinSys::LocalMatrix getOwnedLocalMatrix() { return ownedLocalMatrix_; }
+  LinSys::LocalMatrix getSharedNotOwnedLocalMatrix() { return sharedNotOwnedLocalMatrix_; }
+  LinSys::LocalOrdinal getMaxOwnedRowId() { return maxOwnedRowId_; }
+  
   class TpetraLinSysCoeffApplier : public CoeffApplier
   {
   public:
@@ -174,8 +187,8 @@ public:
       devicePointer_(nullptr)
     {}
 
-    KOKKOS_FUNCTION
-    ~TpetraLinSysCoeffApplier() {}
+    KOKKOS_DEFAULTED_FUNCTION
+    ~TpetraLinSysCoeffApplier() = default;
 
     KOKKOS_FUNCTION
     virtual void resetRows(unsigned numNodes,
@@ -187,7 +200,7 @@ public:
 
     KOKKOS_FUNCTION
     virtual void operator()(unsigned numEntities,
-                            const ngp::Mesh::ConnectedNodes& entities,
+                            const stk::mesh::NgpMesh::ConnectedNodes& entities,
                             const SharedMemView<int*,DeviceShmem> & localIds,
                             const SharedMemView<int*,DeviceShmem> & sortPermutation,
                             const SharedMemView<const double*,DeviceShmem> & rhs,
@@ -208,7 +221,6 @@ public:
     TpetraLinSysCoeffApplier* devicePointer_;
   };
 
-private:
   void buildConnectedNodeGraph(stk::mesh::EntityRank rank,
                                const stk::mesh::PartVector& parts);
 
@@ -255,7 +267,12 @@ private:
   Teuchos::RCP<LinSys::Map>    ownedRowsMap_;
 
   // Only nodes that share with other procs that I don't own
-  Teuchos::RCP<LinSys::Map>    sharedNotOwnedRowsMap_;
+  Teuchos::RCP<LinSys::Map> sharedNotOwnedRowsMap_;
+
+  // Combintion of owned and sharednotowned maps
+  // owned first, then shared
+  Teuchos::RCP<LinSys::Map> ownedAndSharedRowsMap_;
+
 
   Teuchos::RCP<LinSys::Graph>  ownedGraph_;
   Teuchos::RCP<LinSys::Graph>  sharedNotOwnedGraph_;

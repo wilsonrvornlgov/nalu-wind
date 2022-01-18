@@ -38,8 +38,7 @@ public:
   using AlgTraits = AlgTraitsQuad9;
   KOKKOS_FUNCTION
   Quad93DSCS();
-  KOKKOS_FUNCTION
-  virtual ~Quad93DSCS() {}
+  KOKKOS_FUNCTION virtual ~Quad93DSCS() {}
 
   using MasterElement::determinant;
 

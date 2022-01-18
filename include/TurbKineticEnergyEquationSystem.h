@@ -14,7 +14,7 @@
 
 #include <EquationSystem.h>
 #include <FieldTypeDef.h>
-#include <NaluParsing.h>
+#include <NaluParsedTypes.h>
 
 #include "ngp_algorithms/NodalGradAlgDriver.h"
 #include "ngp_algorithms/TKEWallFuncAlgDriver.h"
@@ -87,6 +87,10 @@ public:
   void manage_projected_nodal_gradient(
     EquationSystems& eqSystems);
   void compute_projected_nodal_gradient();
+
+  void post_external_data_transfer_work();
+  static
+  bool check_for_valid_turblence_model(TurbulenceModel turbModel);
   
   const bool managePNG_;
 

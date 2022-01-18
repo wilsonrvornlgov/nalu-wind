@@ -14,8 +14,9 @@
 #include "KokkosInterface.h"
 #include "NGPInstance.h"
 
-#include "stk_ngp/Ngp.hpp"
+#include "stk_mesh/base/Ngp.hpp"
 #include "stk_mesh/base/Entity.hpp"
+#include "stk_mesh/base/Types.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -34,11 +35,11 @@ struct NodeKernelTraits
 class NodeKernel
 {
 public:
-  KOKKOS_FORCEINLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   NodeKernel() = default;
 
-  KOKKOS_FUNCTION
-  virtual ~NodeKernel() {}
+  KOKKOS_DEFAULTED_FUNCTION
+  virtual ~NodeKernel() = default;
 
   virtual NodeKernel* create_on_device() = 0;
 
@@ -57,10 +58,10 @@ template<typename T>
 class NGPNodeKernel : public NodeKernel
 {
 public:
-  KOKKOS_FORCEINLINE_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   NGPNodeKernel() = default;
 
-  KOKKOS_FUNCTION
+  KOKKOS_DEFAULTED_FUNCTION
   virtual ~NGPNodeKernel() = default;
 
   virtual NodeKernel* create_on_device() final

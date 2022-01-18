@@ -18,6 +18,7 @@
 #include "ngp_utils/NgpFieldUtils.h"
 
 #include <stk_mesh/base/Entity.hpp>
+#include <stk_mesh/base/NgpMesh.hpp>
 
 #include <vector>
 
@@ -61,7 +62,8 @@ NGPApplyCoeff::NGPApplyCoeff(EquationSystem* eqSystem)
     deviceSumInto_(eqSystem->linsys_->get_coeff_applier()),
     nDim_(eqSystem->linsys_->numDof()),
     hasOverset_(eqSystem->realm_.hasOverset_),
-    extractDiagonal_(eqSystem->extractDiagonal_)
+    extractDiagonal_(eqSystem->extractDiagonal_),
+    resetOversetRows_(eqSystem->resetOversetRows_)
 {
   if (extractDiagonal_) {
     diagField_ = nalu_ngp::get_ngp_field(
@@ -75,7 +77,7 @@ NGPApplyCoeff::NGPApplyCoeff(EquationSystem* eqSystem)
 
 void NGPApplyCoeff::extract_diagonal(
   const unsigned int nEntities,
-  const ngp::Mesh::ConnectedNodes& entities,
+  const stk::mesh::NgpMesh::ConnectedNodes& entities,
   SharedMemView<double**, DeviceShmem>& lhs) const
 {
   constexpr bool forceAtomic = std::is_same<
@@ -93,7 +95,7 @@ void NGPApplyCoeff::extract_diagonal(
 void
 NGPApplyCoeff::reset_overset_rows(
   const unsigned int nEntities,
-  const ngp::Mesh::ConnectedNodes& entities,
+  const stk::mesh::NgpMesh::ConnectedNodes& entities,
   SharedMemView<double*, DeviceShmem>& rhs,
   SharedMemView<double**, DeviceShmem>& lhs) const
 {
@@ -116,7 +118,7 @@ NGPApplyCoeff::reset_overset_rows(
 
 void NGPApplyCoeff::operator()(
   unsigned numMeshobjs,
-  const ngp::Mesh::ConnectedNodes& symMeshobjs,
+  const stk::mesh::NgpMesh::ConnectedNodes& symMeshobjs,
   const SharedMemView<int*,DeviceShmem> & scratchIds,
   const SharedMemView<int*,DeviceShmem> & sortPermutation,
   SharedMemView<double*,DeviceShmem> & rhs,
@@ -126,7 +128,7 @@ void NGPApplyCoeff::operator()(
   if (extractDiagonal_)
     extract_diagonal(numMeshobjs, symMeshobjs, lhs);
 
-  if (hasOverset_)
+  if (hasOverset_ && resetOversetRows_)
     reset_overset_rows(numMeshobjs, symMeshobjs, rhs, lhs);
 
   (*deviceSumInto_)(

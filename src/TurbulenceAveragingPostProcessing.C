@@ -16,13 +16,13 @@
 #include <Realm.h>
 #include <MovingAveragePostProcessor.h>
 #include <SolutionOptions.h>
-#include <nalu_make_unique.h>
 
 // NGP Algorithms
 #include "ElemDataRequests.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldUtils.h"
 #include "ngp_utils/NgpReduceUtils.h"
+#include "ngp_utils/NgpFieldManager.h"
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -34,6 +34,8 @@
 #include <stk_mesh/base/GetBuckets.hpp>
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/Part.hpp>
+#include <stk_mesh/base/NgpMesh.hpp>
+#include <stk_mesh/base/NgpField.hpp>
 
 // basic c++
 #include <stdexcept>
@@ -43,6 +45,7 @@
 #include <algorithm>
 #include <complex>
 #include <cmath>
+#include <memory>
 
 namespace sierra{
 namespace nalu{
@@ -252,7 +255,7 @@ TurbulenceAveragingPostProcessing::setup()
     stk::mesh::put_field_on_mesh(field, stk::mesh::selectField(*tempField), nullptr);
     realm_.augment_restart_variable_list(fTempName);
 
-    movingAvgPP_ = make_unique<MovingAveragePostProcessor>(
+    movingAvgPP_ = std::make_unique<MovingAveragePostProcessor>(
       realm_.bulk_data(),
       *realm_.timeIntegrator_,
       realm_.restarted_simulation()
@@ -343,6 +346,8 @@ TurbulenceAveragingPostProcessing::setup()
               throw std::runtime_error("TurbulenceAveragingPostProcessing:setup() Cannot compute SFS stress in less than 3 dimensions: ");
           const std::string stressName = "sfs_stress";
           register_field(stressName, stressSize, metaData, targetPart);
+          const std::string SFSstressNameInst = "sfs_stress_inst";
+          register_field(SFSstressNameInst, stressSize, metaData, targetPart);
       }
 
       if ( avInfo->computeTemperatureSFS_ ) {
@@ -665,7 +670,7 @@ TurbulenceAveragingPostProcessing::execute()
     
     // avoid computing stresses when when oldTimeFilter is not zero
     // this will occur only on a first time step of a new simulation
-    if (oldTimeFilter > 0.0 ) {
+    if (oldTimeFilter > 0.0 ) { 
       if ( avInfo->computeFavreStress_ ) {
         compute_favre_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
       }
@@ -673,23 +678,22 @@ TurbulenceAveragingPostProcessing::execute()
       if ( avInfo->computeReynoldsStress_ ) {
         compute_reynolds_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
       }
-
-      if ( avInfo->computeResolvedStress_ ) {
-        compute_resolved_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
-      }
-
-      if ( avInfo->computeSFSStress_ ) {
-        compute_sfs_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
-      }
-
-      if ( avInfo->computeTemperatureResolved_ )
-        compute_temperature_resolved_flux(
-          avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
-
-      if ( avInfo->computeTemperatureSFS_ )
-        compute_temperature_sfs_flux(
-          avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
+    } 
+    if ( avInfo->computeResolvedStress_ ) {
+      compute_resolved_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
     }
+
+    if ( avInfo->computeSFSStress_ ) {
+      compute_sfs_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
+    }
+
+    if ( avInfo->computeTemperatureResolved_ )
+      compute_temperature_resolved_flux(
+          avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
+
+    if ( avInfo->computeTemperatureSFS_ )
+      compute_temperature_sfs_flux(
+          avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
   }
 }
 
@@ -701,7 +705,7 @@ TurbulenceAveragingPostProcessing::compute_averages(
   const double& zeroCurrent,
   const double& dt)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
   using FieldPair = Kokkos::pair<FieldInfoNGP, FieldInfoNGP>;
   using FieldInfoView = Kokkos::View<FieldPair*, Kokkos::LayoutRight, MemSpace>;
 
@@ -710,8 +714,13 @@ TurbulenceAveragingPostProcessing::compute_averages(
   const int numResolvedPairs = avInfo->resolvedFieldVecPair_.size();
   const double currentTimeFilter = currentTimeFilter_;
 
+#ifdef KOKKOS_ENABLE_CUDA
+  FieldInfoView fieldPairs(
+    Kokkos::ViewAllocateWithoutInitializing("turbAveragesFields"), (numRePairs + numFavrePairs + numResolvedPairs));
+#else
   FieldInfoView fieldPairs(
     "turbAveragesFields", (numRePairs + numFavrePairs + numResolvedPairs));
+#endif
   auto hostFieldPairs = Kokkos::create_mirror_view(fieldPairs);
 
   for (int i=0; i < numRePairs; i++) {
@@ -823,7 +832,7 @@ TurbulenceAveragingPostProcessing::compute_tke(
   const std::string &averageBlockName,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   // check for precise set of names
   const std::string velocityName = isReynolds
@@ -866,7 +875,7 @@ TurbulenceAveragingPostProcessing::compute_reynolds_stress(
   const double &dt,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const std::string velocityAName = "velocity_ra_" + averageBlockName;
@@ -881,6 +890,7 @@ TurbulenceAveragingPostProcessing::compute_reynolds_stress(
   const double oldWeight = oldTimeFilter * zeroCurrent;
   const double currentTimeFilter = currentTimeFilter_;
 
+  stress.sync_to_device();
   nalu_ngp::run_entity_algorithm(
     "TurbPP::compute_restress",
     ngpMesh, stk::topology::NODE_RANK, s_all_nodes,
@@ -920,7 +930,7 @@ TurbulenceAveragingPostProcessing::compute_favre_stress(
   const double &dt,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const std::string velocityAName = "velocity_fa_" + averageBlockName;
@@ -985,7 +995,7 @@ void TurbulenceAveragingPostProcessing::compute_temperature_resolved_flux(
   const double& dt,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.meta_data().spatial_dimension();
   const auto& meshInfo = realm_.mesh_info();
@@ -1036,7 +1046,7 @@ TurbulenceAveragingPostProcessing::compute_resolved_stress(
   const double &dt,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const auto& meshInfo = realm_.mesh_info();
@@ -1082,7 +1092,7 @@ TurbulenceAveragingPostProcessing::compute_sfs_stress(
   const double &dt,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const double twoDivDim = 2.0 / static_cast<double>(ndim);
@@ -1095,6 +1105,7 @@ TurbulenceAveragingPostProcessing::compute_sfs_stress(
   const auto turbVisc = nalu_ngp::get_ngp_field(meshInfo, "turbulent_viscosity");
   const auto dudx = nalu_ngp::get_ngp_field(meshInfo, "dudx");
   auto sfsStress = nalu_ngp::get_ngp_field(meshInfo, "sfs_stress");
+  auto sfsStressInst = nalu_ngp::get_ngp_field(meshInfo, "sfs_stress_inst");
 
   // Special treatment for turbulent KE
   const auto* turbKEHost = realm_.meta_data().get_field(
@@ -1103,7 +1114,7 @@ TurbulenceAveragingPostProcessing::compute_sfs_stress(
 
   // If we have a turbulent_ke field, extract the NGP version for use in
   // computations
-  ngp::Field<double> turbKE;
+  stk::mesh::NgpField<double> turbKE;
   if (!computeSFSTKE) {
     turbKE = nalu_ngp::get_ngp_field(meshInfo, "turbulent_ke");
   }
@@ -1149,6 +1160,11 @@ TurbulenceAveragingPostProcessing::compute_sfs_stress(
           const double divUTerm = (i == j) ? twothird * divU : 0.0;
           const double sfsTKETerm = (i == j) ? twothird * rho * sfsTKE : 0.0;
 
+          const double instStress =
+	    - (mut * (dudx.get(mi, ndim * i + j) +
+		      dudx.get(mi, ndim * j + i) - divUTerm) -
+	       sfsTKETerm);
+          sfsStressInst.get(mi, ic) = instStress;
           const double newStress =
             (sfsStress.get(mi, ic) * oldTimeFilter * zeroCurrent -
              dt * (mut * (dudx.get(mi, ndim * i + j) +
@@ -1160,6 +1176,7 @@ TurbulenceAveragingPostProcessing::compute_sfs_stress(
         }
     });
   sfsStress.modify_on_device();
+  sfsStressInst.modify_on_device();
 }
 
 
@@ -1171,7 +1188,7 @@ TurbulenceAveragingPostProcessing::compute_temperature_sfs_flux(
   const double &dt,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const auto& meshInfo = realm_.mesh_info();
@@ -1209,7 +1226,7 @@ TurbulenceAveragingPostProcessing::compute_vorticity(
   const std::string & /* averageBlockName */,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const auto& meshInfo = realm_.mesh_info();
@@ -1241,7 +1258,7 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
   const std::string & /* averageBlockName */,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const auto& meshInfo = realm_.mesh_info();
@@ -1415,7 +1432,7 @@ TurbulenceAveragingPostProcessing::compute_mean_resolved_ke(
   const std::string & /* averageBlockName */,
   stk::mesh::Selector s_all_nodes)
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
 
   const int ndim = realm_.spatialDimension_;
   const auto& meshInfo = realm_.mesh_info();

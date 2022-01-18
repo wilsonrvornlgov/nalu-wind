@@ -150,13 +150,9 @@ EquationSystem::set_nodal_gradient(
 //-------- system_is_converged ---------------------------------------------
 //--------------------------------------------------------------------------
 bool
-EquationSystem::system_is_converged()
+EquationSystem::system_is_converged() const
 {
-  bool isConverged = true;
-  if ( NULL != linsys_ ) {
-    isConverged = (linsys_->scaledNonLinearResidual() <  convergenceTolerance_ );
-  }
-  return isConverged;
+  return provide_scaled_norm() < convergenceTolerance_ ;
 }
 
 //--------------------------------------------------------------------------
@@ -172,7 +168,7 @@ EquationSystem::pre_timestep_work()
 //-------- provide_scaled_norm ---------------------------------------------
 //--------------------------------------------------------------------------
 double
-EquationSystem::provide_scaled_norm()
+EquationSystem::provide_scaled_norm() const
 {
   return ( (NULL != linsys_) ? linsys_->scaledNonLinearResidual() : 0.0 );
 }
@@ -181,7 +177,7 @@ EquationSystem::provide_scaled_norm()
 //-------- provide_norm ---------------------------------------------
 //--------------------------------------------------------------------------
 double
-EquationSystem::provide_norm()
+EquationSystem::provide_norm() const
 {
   return ( (NULL != linsys_) ? linsys_->nonLinearResidual() : 0.0 );
 }
@@ -190,9 +186,9 @@ EquationSystem::provide_norm()
 //-------- provide_norm_increment ------------------------------------------
 //--------------------------------------------------------------------------
 double
-EquationSystem::provide_norm_increment()
+EquationSystem::provide_norm_increment() const
 {
-  return ( (NULL != linsys_) ? 1.0 : 0.0 );
+  return ( (NULL != linsys_ || realm_.matrixFree_) ? 1.0 : 0.0 );
 }
 
 //--------------------------------------------------------------------------
@@ -558,6 +554,16 @@ void EquationSystem::solution_update(
 
   nalu_ngp::field_axpby(
     meshInfo, sel, delta_frac, delta, field_frac, field, numComponents, rank);
+}
+
+
+void EquationSystem::register_abltop_bc(
+  stk::mesh::Part *part,
+  const stk::topology &theTopo,
+  const ABLTopBoundaryConditionData &abltopBCData)
+{
+  SymmetryBoundaryConditionData simData(abltopBCData.boundaryConditions_);
+  register_symmetry_bc( part, theTopo, simData );
 }
 
 } // namespace nalu

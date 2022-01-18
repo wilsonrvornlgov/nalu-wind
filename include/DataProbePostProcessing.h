@@ -12,7 +12,7 @@
 #ifndef DataProbePostProcessing_h
 #define DataProbePostProcessing_h
 
-#include <NaluParsing.h>
+#include "NaluParsedTypes.h"
 
 #include <string>
 #include <vector>
@@ -23,6 +23,8 @@
 #include <stk_mesh/base/Selector.hpp>
 
 #include <stk_io/StkMeshIoBroker.hpp>
+
+namespace YAML { class Node; }
 
 // stk forwards
 namespace stk {
@@ -73,7 +75,7 @@ public:
   std::vector<stk::mesh::Part *> part_;
 
   // variables for sample planes
-  bool isSamplePlane_;   
+  bool isSamplePlane_;  
   std::vector<DataProbeGeomType> geomType_;
   std::vector<Coordinates> cornerCoordinates_;
   std::vector<Coordinates> edge1Vector_;
@@ -82,7 +84,7 @@ public:
   std::vector<int>         edge2NumPoints_;
   std::vector<Coordinates> offsetDir_;
   std::vector<std::vector<double>>  offsetSpacings_;
-
+  std::vector<std::string> onlyOutputField_;
 
 };
 
@@ -158,6 +160,9 @@ public:
   // frequency of output
   double outputFreq_;
 
+  bool writeCoords_;
+  int  gzLevel_; 
+
   // width for output
   int w_;
 
@@ -185,6 +190,7 @@ private:
   double previousTime_;
   bool useExo_{false};
   bool useText_{false};
+  bool enablePerfTiming_{false};
   std::string exoName_;
   size_t fileIndex_;
   size_t precisionvar_;

@@ -15,6 +15,7 @@
 #include <NaluEnv.h>
 #include <NaluParsing.h>
 #include <Simulation.h>
+#include <Teuchos_ParameterList.hpp>
 
 #ifdef NALU_USES_HYPRE
 #include "HypreDirectSolver.h"
@@ -77,10 +78,20 @@ LinearSolvers::load(const YAML::Node & node)
     }
   }
 }
+  
+Teuchos::ParameterList LinearSolvers::get_solver_configuration(std::string solverBlockName)
+{
+  auto it = solverTpetraConfig_.find(solverBlockName);
+  if (it == solverTpetraConfig_.end()) {
+    throw std::runtime_error("solver name block not found; error in solver creation; check: " + solverBlockName);
+  }
+  return *it->second->params();
+}
 
 LinearSolver *
 LinearSolvers::create_solver(
   std::string solverBlockName,
+  const std::string realmName,
   EquationType theEQ )
 {
 
@@ -121,10 +132,28 @@ LinearSolvers::create_solver(
   }
 
   // set it and return
-  solvers_[theEQ] = theSolver;
+  const std::string key = realmName +
+    std::to_string(static_cast<int>(theEQ));
+  solvers_[key] = theSolver;
   return theSolver;
 }
 
+LinearSolver* LinearSolvers::reinitialize_solver(
+  const std::string& solverBlockName,
+  const std::string& realmName,
+  const EquationType theEQ)
+{
+  const std::string key = realmName +
+    std::to_string(static_cast<int>(theEQ));
+
+  auto it = solvers_.find(key);
+  if (it != solvers_.end()) {
+    delete (it->second);
+    solvers_.erase(it);
+  }
+
+  return create_solver(solverBlockName, realmName, theEQ);
+}
 
 } // namespace nalu
 } // namespace Sierra

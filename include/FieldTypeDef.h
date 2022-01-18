@@ -14,9 +14,10 @@
 
 #include <stk_mesh/base/FieldBase.hpp>
 #include <stk_mesh/base/CoordinateSystems.hpp>
-#include <stk_ngp/Ngp.hpp>
+#include <stk_mesh/base/Ngp.hpp>
+#include <stk_mesh/base/NgpField.hpp>
 
-#include "LinearSolverTypes.h" // for GlobalOrdinal
+#include <Tpetra_Details_DefaultTypes.hpp>
 
 #ifdef NALU_USES_HYPRE
 #include "HYPRE_utilities.h"
@@ -29,9 +30,9 @@ namespace nalu{
 typedef stk::mesh::Field<double>  ScalarFieldType;
 typedef stk::mesh::Field<stk::mesh::EntityId> GlobalIdFieldType;
 typedef stk::mesh::Field<int>  ScalarIntFieldType;
-typedef ngp::Field<double>  NGPDoubleFieldType;
-typedef ngp::Field<stk::mesh::EntityId> NGPGlobalIdFieldType;
-typedef ngp::Field<int>  NGPScalarIntFieldType;
+typedef stk::mesh::NgpField<double>  NGPDoubleFieldType;
+typedef stk::mesh::NgpField<stk::mesh::EntityId> NGPGlobalIdFieldType;
+typedef stk::mesh::NgpField<int>  NGPScalarIntFieldType;
 
 // define vector field typedef; however, what is the value of Cartesian?
 typedef stk::mesh::Field<double, stk::mesh::Cartesian>  VectorFieldType;
@@ -51,8 +52,9 @@ typedef HYPRE_Int HypreIntType;
 typedef int HypreIntType;
 #endif
 
-typedef stk::mesh::Field<LinSys::GlobalOrdinal> TpetIDFieldType;
+typedef stk::mesh::Field<Tpetra::Details::DefaultTypes::global_ordinal_type> TpetIDFieldType;
 typedef stk::mesh::Field<HypreIntType> HypreIDFieldType;
+typedef stk::mesh::NgpField<HypreIntType> NGPHypreIDFieldType;
 
 } // namespace nalu
 } // namespace Sierra

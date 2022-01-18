@@ -12,6 +12,8 @@
 #include "wind_energy/BdyHeightAlgorithm.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldUtils.h"
+#include "ngp_utils/NgpFieldManager.h"
+#include "NaluParsing.h"
 #include "Realm.h"
 #include "TurbulenceAveragingPostProcessing.h"
 #include "AveragingInfo.h"
@@ -22,6 +24,7 @@
 #include "stk_mesh/base/BulkData.hpp"
 #include "stk_mesh/base/Field.hpp"
 #include "stk_util/parallel/ParallelReduce.hpp"
+#include "stk_mesh/base/NgpMesh.hpp"
 
 #include "netcdf.h"
 
@@ -201,19 +204,23 @@ BdyLayerStatistics::initialize()
   d_sumVol_     = ArrayType("d_sumVol_", nHeights);
   d_rhoAvg_     = ArrayType("d_rhoAvg_", nHeights);
   d_velAvg_     = ArrayType("d_velAvg_", nHeights * nDim_);
+  d_velMagAvg_  = ArrayType("d_velMagAvg_", nHeights);
   d_velBarAvg_  = ArrayType("d_velBarAvg_", nHeights * nDim_);
   d_uiujAvg_    = ArrayType("d_uiujAvg_", nHeights * nDim_ * 2);
   d_uiujBarAvg_ = ArrayType("d_uiujBarAvg_", nHeights * nDim_ * 2);
   d_sfsBarAvg_  = ArrayType("d_sfsBarAvg_", nHeights * nDim_ * 2);
+  d_sfsAvg_     = ArrayType("d_sfsAvg_", nHeights * nDim_ * 2);
 
   heights_    = Kokkos::create_mirror_view(d_heights_);
   sumVol_     = Kokkos::create_mirror_view(d_sumVol_);
   rhoAvg_     = Kokkos::create_mirror_view(d_rhoAvg_);
   velAvg_     = Kokkos::create_mirror_view(d_velAvg_);
+  velMagAvg_  = Kokkos::create_mirror_view(d_velMagAvg_);
   velBarAvg_  = Kokkos::create_mirror_view(d_velBarAvg_);
   uiujAvg_    = Kokkos::create_mirror_view(d_uiujAvg_);
   uiujBarAvg_ = Kokkos::create_mirror_view(d_uiujBarAvg_);
   sfsBarAvg_  = Kokkos::create_mirror_view(d_sfsBarAvg_);
+  sfsAvg_     = Kokkos::create_mirror_view(d_sfsAvg_);
 
   if (calcTemperatureStats_) {
     d_thetaAvg_       = ArrayType("thetaAvg_", nHeights);
@@ -260,6 +267,7 @@ BdyLayerStatistics::execute()
   write_time_hist_file();
 }
 
+
 void
 BdyLayerStatistics::velocity(
   double height,
@@ -278,6 +286,12 @@ BdyLayerStatistics::time_averaged_velocity(
   interpolate_variable(
     realm_.meta_data().spatial_dimension(),
     velBarAvg_, height, velVector);
+}
+
+void
+BdyLayerStatistics::velocity_magnitude(double height, double* velMag)
+{
+    interpolate_variable(1, velMagAvg_, height, velMag);
 }
 
 void
@@ -341,7 +355,7 @@ BdyLayerStatistics::interpolate_variable(
 void
 BdyLayerStatistics::impl_compute_velocity_stats()
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
   const auto& meshInfo = realm_.mesh_info();
   const auto& ngpMesh = realm_.ngp_mesh();
   const auto density = nalu_ngp::get_ngp_field(meshInfo, "density");
@@ -349,18 +363,22 @@ BdyLayerStatistics::impl_compute_velocity_stats()
   const auto velTimeAvg = nalu_ngp::get_ngp_field(meshInfo, "velocity_resa_abl");
   const auto resStress = nalu_ngp::get_ngp_field(meshInfo, "resolved_stress");
   const auto sfsField = nalu_ngp::get_ngp_field(meshInfo, "sfs_stress");
+  const auto sfsFieldInst = nalu_ngp::get_ngp_field(meshInfo, "sfs_stress_inst");
   const auto dualVol = nalu_ngp::get_ngp_field(meshInfo, "dual_nodal_volume");
   const auto heightIndex = realm_.ngp_field_manager().get_field<int>(
     heightIndex_->mesh_meta_data_ordinal());
 
   stk::mesh::Selector sel = realm_.meta_data().locally_owned_part()
     & stk::mesh::selectUnion(fluidParts_)
-    & !(realm_.get_inactive_selector());
+    & !(realm_.get_inactive_selector())
+    & !(stk::mesh::selectUnion(realm_.get_slave_part_vector()));
 
   // Reset arrays before accumulation
   Kokkos::deep_copy(d_velAvg_, 0.0);
+  Kokkos::deep_copy(d_velMagAvg_, 0.0);
   Kokkos::deep_copy(d_velBarAvg_, 0.0);
   Kokkos::deep_copy(d_sfsBarAvg_, 0.0);
+  Kokkos::deep_copy(d_sfsAvg_, 0.0);
   Kokkos::deep_copy(d_uiujAvg_, 0.0);
   Kokkos::deep_copy(d_uiujBarAvg_, 0.0);
   Kokkos::deep_copy(d_sumVol_, 0.0);
@@ -368,12 +386,14 @@ BdyLayerStatistics::impl_compute_velocity_stats()
 
   // Bring arrays into local scope for capture on device
   auto d_velAvg     = d_velAvg_;
+  auto d_velMagAvg  = d_velMagAvg_;
   auto d_velBarAvg  = d_velBarAvg_;
   auto d_sfsBarAvg  = d_sfsBarAvg_;
   auto d_uiujAvg    = d_uiujAvg_;
   auto d_uiujBarAvg = d_uiujBarAvg_;
   auto d_sumVol     = d_sumVol_;
   auto d_rhoAvg     = d_rhoAvg_;
+  auto d_sfsAvg     = d_sfsAvg_;
 
   const int ndim = nDim_;
   nalu_ngp::run_entity_algorithm(
@@ -390,6 +410,17 @@ BdyLayerStatistics::impl_compute_velocity_stats()
 
       // Velocity computations
       int offset = ih * ndim;
+
+      // -this is the horizontal velocity magnitude--needs to be generalized to let the user specify if it
+      //  should just be horizontal, what the horizontal plane is, or the full vector magnitude.  This implementation
+      //  assumes horizontal is in Cartesian x and y.
+      double velMag = 0.0;
+      for (int d=0; d < ndim-1; ++d) {
+        velMag += velocity.get(mi, d) * velocity.get(mi, d);
+      }
+      velMag = stk::math::sqrt(velMag);
+      Kokkos::atomic_add(&d_velMagAvg(ih), (velMag * rho * dVol));
+
       for (int d=0; d < ndim; ++d) {
         Kokkos::atomic_add(&d_velAvg(offset + d), (velocity.get(mi, d) * rho * dVol));
 
@@ -409,14 +440,17 @@ BdyLayerStatistics::impl_compute_velocity_stats()
         }
 
       for (int i=0; i < ndim * 2; ++i) {
+        Kokkos::atomic_add(&d_sfsAvg(offset + i), (sfsFieldInst.get(mi, i)*rho* dVol));
         Kokkos::atomic_add(&d_sfsBarAvg(offset + i), (sfsField.get(mi, i) * dVol));
         Kokkos::atomic_add(&d_uiujBarAvg(offset + i), (resStress.get(mi, i) * dVol));
       }
     });
 
   Kokkos::deep_copy(velAvg_,     d_velAvg_);
+  Kokkos::deep_copy(velMagAvg_,  d_velMagAvg_);
   Kokkos::deep_copy(velBarAvg_,  d_velBarAvg_);
   Kokkos::deep_copy(sfsBarAvg_,  d_sfsBarAvg_);
+  Kokkos::deep_copy(sfsAvg_,     d_sfsAvg_);
   Kokkos::deep_copy(uiujAvg_,    d_uiujAvg_);
   Kokkos::deep_copy(uiujBarAvg_, d_uiujBarAvg_);
   Kokkos::deep_copy(sumVol_,     d_sumVol_);
@@ -427,9 +461,13 @@ BdyLayerStatistics::impl_compute_velocity_stats()
   const auto& bulk = realm_.bulk_data();
   MPI_Allreduce(MPI_IN_PLACE, velAvg_.data(), nHeights * nDim_, MPI_DOUBLE,
                 MPI_SUM, bulk.parallel());
+  MPI_Allreduce(MPI_IN_PLACE, velMagAvg_.data(), nHeights, MPI_DOUBLE, MPI_SUM,
+                bulk.parallel());
   MPI_Allreduce(MPI_IN_PLACE, velBarAvg_.data(), nHeights * nDim_,
                 MPI_DOUBLE, MPI_SUM, bulk.parallel());
   MPI_Allreduce(MPI_IN_PLACE, sfsBarAvg_.data(), nHeights * nDim_ * 2,
+                MPI_DOUBLE, MPI_SUM, bulk.parallel());
+  MPI_Allreduce(MPI_IN_PLACE, sfsAvg_.data(), nHeights * nDim_ * 2,
                 MPI_DOUBLE, MPI_SUM, bulk.parallel());
   MPI_Allreduce(MPI_IN_PLACE, uiujBarAvg_.data(), nHeights * nDim_ * 2,
                 MPI_DOUBLE, MPI_SUM, bulk.parallel());
@@ -449,9 +487,13 @@ BdyLayerStatistics::impl_compute_velocity_stats()
       velBarAvg_(offset + d) /= rhoAvg_(ih);
     }
 
+    velMagAvg_(ih) /= rhoAvg_(ih);
+
+
     offset *= 2;
     for (int i=0; i < nDim_ * 2; i++) {
       sfsBarAvg_(offset + i) /= rhoAvg_(ih);
+      sfsAvg_(offset + i)    /= rhoAvg_(ih);
       uiujBarAvg_(offset + i) /= rhoAvg_(ih);
       uiujAvg_(offset + i) /= rhoAvg_(ih);
     }
@@ -479,7 +521,7 @@ BdyLayerStatistics::impl_compute_velocity_stats()
 void
 BdyLayerStatistics::impl_compute_temperature_stats()
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
   const auto& meshInfo = realm_.mesh_info();
   const auto& ngpMesh = realm_.ngp_mesh();
 
@@ -496,7 +538,8 @@ BdyLayerStatistics::impl_compute_temperature_stats()
 
   stk::mesh::Selector sel = realm_.meta_data().locally_owned_part()
     & stk::mesh::selectUnion(fluidParts_)
-    & !(realm_.get_inactive_selector());
+    & !(realm_.get_inactive_selector())
+    & !(stk::mesh::selectUnion(realm_.get_slave_part_vector()));
 
   // Reset arrays before accumulation
   Kokkos::deep_copy(d_thetaAvg_, 0.0);
@@ -807,6 +850,9 @@ BdyLayerStatistics::write_time_hist_file()
   ierr = nc_put_vara_double(
     ncid, ncVarIDs_["sfs_stress_tavg"], start3.data(), count3.data(),
     sfsBarAvg_.data());
+  ierr = nc_put_vara_double(
+    ncid, ncVarIDs_["sfs_stress"], start3.data(), count3.data(),
+    sfsAvg_.data());
   ierr = nc_put_vara_double(
     ncid, ncVarIDs_["resolved_stress_tavg"], start3.data(), count3.data(),
     uiujBarAvg_.data());

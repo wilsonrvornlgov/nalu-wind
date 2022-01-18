@@ -54,6 +54,19 @@ TpetraLinearSolverConfig::load(const YAML::Node & node)
   tol = tolerance_;
 
   //Teuchos::RCP<Teuchos::ParameterList> params = Teuchos::params();
+  if (method_ == "sstep_gmres") {
+    method_ = "TPETRA GMRES S-STEP";
+
+    int step_size;
+    get_if_present(node, "krylov_step_size", step_size, step_size);
+    params_->set("Step Size", step_size);
+
+    bool ritz_on_fly = true;
+    params_->set("Compute Ritz Values on Fly", ritz_on_fly);
+
+    bool useCholQR2 = true;
+    params_->set("CholeskyQR2", useCholQR2);
+  }
   params_->set("Convergence Tolerance", tol);
   params_->set("Maximum Iterations", max_iterations);
   if (output_level > 0)
@@ -81,6 +94,15 @@ TpetraLinearSolverConfig::load(const YAML::Node & node)
     paramsPrecond_->set("relaxation: type","MT Symmetric Gauss-Seidel");
     paramsPrecond_->set("relaxation: sweeps",1);
   }
+  else if (precond_ == "sgs2") {
+    preconditionerType_ = "RELAXATION";
+    paramsPrecond_->set("relaxation: type","Two-stage Symmetric Gauss-Seidel");
+    paramsPrecond_->set("relaxation: sweeps",1);
+
+    int inner_iterations;
+    get_if_present(node, "inner_iterations", inner_iterations, 1);
+    paramsPrecond_->set ("relaxation: inner sweeps", inner_iterations);
+  }
   else if (precond_ == "jacobi" || precond_ == "default") {
     preconditionerType_ = "RELAXATION";
     paramsPrecond_->set("relaxation: type","Jacobi");
@@ -102,13 +124,16 @@ TpetraLinearSolverConfig::load(const YAML::Node & node)
     throw std::runtime_error("invalid linear solver preconditioner specified ");
   }
 
+  params_->set("Solver Name", method_);
+
+
   get_if_present(node, "write_matrix_files",       writeMatrixFiles_,        writeMatrixFiles_);
   get_if_present(node, "summarize_muelu_timer",    summarizeMueluTimer_,     summarizeMueluTimer_);
 
   get_if_present(node, "recompute_preconditioner", recomputePreconditioner_, recomputePreconditioner_);
   get_if_present(node, "reuse_preconditioner",     reusePreconditioner_,     reusePreconditioner_);
   get_if_present(node, "segregated_solver",        useSegregatedSolver_,     useSegregatedSolver_);
-
+  get_if_present(node, "reuse_linear_system", reuseLinSysIfPossible_, reuseLinSysIfPossible_);
 }
 
 } // namespace nalu

@@ -13,10 +13,7 @@
 #define EquationSystems_h
 
 #include <Enums.h>
-
-// yaml for parsing..
-#include <yaml-cpp/yaml.h>
-#include<NaluParsing.h>
+#include "NaluParsedTypes.h"
 
 // stk
 namespace stk{
@@ -43,7 +40,6 @@ namespace nalu{
 
 class Realm;
 class EquationSystem;
-class PostProcessingData;
 class Simulation;
 class AlgorithmDriver;
 class UpdateOversetFringeAlgorithmDriver;
@@ -70,7 +66,7 @@ class EquationSystems
   void load(const YAML::Node & node);
   
   std::string get_solver_block_name(
-    const std::string eqName);
+    const std::string eqName) const;
 
   void breadboard();
 
@@ -133,7 +129,6 @@ class EquationSystems
 
   void initialize();
   void reinitialize_linear_system();
-  void post_adapt_work();
   void populate_derived_quantities();
   void initial_work();
 
@@ -194,6 +189,8 @@ class EquationSystems
    *  \sa EquationSystems::solve_and_update()
    */
   void post_iter_work();
+
+  void post_external_data_transfer_work();
 
 
   void register_overset_field_update(stk::mesh::FieldBase*, int, int);

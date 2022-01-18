@@ -15,26 +15,25 @@
 #include <Enums.h>
 #include <FieldTypeDef.h>
 
-// yaml for parsing..
-#include <yaml-cpp/yaml.h>
-
 #include <BoundaryConditions.h>
 #include <InitialConditions.h>
 #include <MaterialPropertys.h>
 #include <EquationSystems.h>
+
+#if defined(NALU_USES_PERCEPT)
 #include <Teuchos_RCP.hpp>
+#endif
 
-#include <stk_util/util/ParameterList.hpp>
-
-#include <stk_ngp/NgpFieldManager.hpp>
-
+#include <ngp_utils/NgpFieldManager.h>
 #include "ngp_utils/NgpMeshInfo.h"
+
+#include "stk_mesh/base/NgpMesh.hpp"
 
 // standard c++
 #include <map>
 #include <string>
 #include <vector>
-#include <stdint.h>
+#include <memory>
 
 namespace stk {
 namespace mesh {
@@ -42,6 +41,10 @@ class Part;
 }
 namespace io {
   class StkMeshIoBroker;
+}
+
+namespace util {
+class ParameterList;
 }
 }
 
@@ -59,9 +62,6 @@ class GeometryAlgDriver;
 
 class NonConformalManager;
 class ErrorIndicatorAlgorithmDriver;
-#if defined (NALU_USES_PERCEPT)
-class Adapter;
-#endif
 class EquationSystems;
 class OutputInfo;
 class OversetManager;
@@ -73,14 +73,15 @@ class SolutionOptions;
 class TimeIntegrator;
 class MasterElement;
 class PropertyEvaluator;
-class HDF5FilePtr;
 class Transfer;
 class MeshMotionAlg;
+class MeshTransformationAlg;
 
 class SolutionNormPostProcessing;
+class SideWriterContainer;
 class TurbulenceAveragingPostProcessing;
 class DataProbePostProcessing;
-class Actuator;
+struct ActuatorModel;
 class ABLForcingAlgorithm;
 class BdyLayerStatistics;
 
@@ -94,7 +95,7 @@ class PromotedElementIO;
  */
 class Realm {
  public:
-  using NgpMeshInfo = nalu_ngp::MeshInfo<ngp::Mesh, ngp::FieldManager>;
+  using NgpMeshInfo = nalu_ngp::MeshInfo<stk::mesh::NgpMesh, nalu_ngp::FieldManager>;
 
   Realm(Realms&, const YAML::Node & node);
   virtual ~Realm();
@@ -106,8 +107,9 @@ class Realm {
 
   virtual void breadboard();
 
-  virtual void initialize();
- 
+  virtual void initialize_prolog();
+  virtual void initialize_epilog();
+
   Simulation *root() const;
   Simulation *root();
   Realms *parent() const;
@@ -119,8 +121,6 @@ class Realm {
   std::string convert_bytes(double bytes);
 
   void create_mesh();
-
-  void setup_adaptivity();
 
   void setup_nodal_fields();
   void setup_edge_fields();
@@ -141,6 +141,8 @@ class Realm {
   void makeSureNodesHaveValidTopology();
 
   void initialize_global_variables();
+
+  void rebalance_mesh();
 
   void balance_nodes();
 
@@ -228,6 +230,8 @@ class Realm {
     stk::mesh::Part *part,
     const stk::topology &theTopo);
 
+  void register_overset_bc();
+
   void setup_overset_bc(
     const OversetBoundaryConditionData &oversetBCData);
 
@@ -242,7 +246,8 @@ class Realm {
 
   void periodic_delta_solution_update(
      stk::mesh::FieldBase *theField,
-     const unsigned &sizeOfField) const;
+     const unsigned &sizeOfField,
+     const bool &doCommunication = true) const;
 
   void periodic_max_field_update(
      stk::mesh::FieldBase *theField,
@@ -250,10 +255,11 @@ class Realm {
 
   const stk::mesh::PartVector &get_slave_part_vector();
 
-  void overset_orphan_node_field_update(
-    stk::mesh::FieldBase *theField,
-    const unsigned sizeRow,
-    const unsigned sizeCol);
+  void overset_field_update(
+    stk::mesh::FieldBase* field,
+    const unsigned nRows,
+    const unsigned nCols,
+    const bool doFinalSyncToDevice = true);
 
   virtual void populate_initial_condition();
   virtual void populate_boundary_data();
@@ -266,7 +272,8 @@ class Realm {
   virtual double compute_adaptive_time_step();
   virtual void swap_states();
   virtual void predict_state();
-  virtual void pre_timestep_work();
+  virtual void pre_timestep_work_prolog();
+  virtual void pre_timestep_work_epilog();
   virtual void output_banner();
   virtual void advance_time_step();
  
@@ -353,8 +360,7 @@ class Realm {
   //  to be applied, e.g., in adaptivity we need to avoid the parent
   //  elements
   stk::mesh::BucketVector const& get_buckets( stk::mesh::EntityRank rank,
-                                              const stk::mesh::Selector & selector ,
-                                              bool get_all = false) const;
+                                              const stk::mesh::Selector & selector) const;
 
   // get aura, bulk and meta data
   bool get_activate_aura();
@@ -373,12 +379,12 @@ class Realm {
     return *meshInfo_;
   }
 
-  inline const ngp::Mesh& ngp_mesh()
+  inline const stk::mesh::NgpMesh& ngp_mesh()
   {
     return mesh_info().ngp_mesh();
   }
 
-  inline const ngp::FieldManager& ngp_field_manager()
+  inline const nalu_ngp::FieldManager& ngp_field_manager()
   {
     return mesh_info().ngp_field_manager();
   }
@@ -412,6 +418,7 @@ class Realm {
   stk::mesh::MetaData *metaData_;
   stk::mesh::BulkData *bulkData_;
   stk::io::StkMeshIoBroker *ioBroker_;
+  std::unique_ptr<SideWriterContainer> sideWriters_;
 
   size_t resultsFileIndex_;
   size_t restartFileIndex_;
@@ -421,14 +428,8 @@ class Realm {
 
   // algorithm drivers managed by region
   std::unique_ptr<GeometryAlgDriver> geometryAlgDriver_;
-  ErrorIndicatorAlgorithmDriver *errorIndicatorAlgDriver_;
-# if defined (NALU_USES_PERCEPT)  
-  Adapter *adapter_;
-#endif
   unsigned numInitialElements_;
-  // for element, side, edge, node rank (node not used)
-  stk::mesh::Selector adapterSelector_[4];
-  Teuchos::RCP<stk::mesh::Selector> activePartForIO_;
+
 
   TimeIntegrator *timeIntegrator_;
 
@@ -449,11 +450,12 @@ class Realm {
   PostProcessingInfo *postProcessingInfo_;
   SolutionNormPostProcessing *solutionNormPostProcessing_;
   TurbulenceAveragingPostProcessing *turbulenceAveragingPostProcessing_;
-  DataProbePostProcessing *dataProbePostProcessing_;
-  Actuator *actuator_;
+  DataProbePostProcessing* dataProbePostProcessing_;
+  std::unique_ptr<ActuatorModel> actuatorModel_;
   ABLForcingAlgorithm *ablForcingAlg_;
   BdyLayerStatistics* bdyLayerStats_{nullptr};
   std::unique_ptr<MeshMotionAlg> meshMotionAlg_;
+  std::unique_ptr<MeshTransformationAlg> meshTransformationAlg_;
 
   std::vector<Algorithm *> propertyAlg_;
   std::map<PropertyIdentifier, ScalarFieldType *> propertyMap_;
@@ -462,6 +464,7 @@ class Realm {
   SizeType nodeCount_;
   bool estimateMemoryOnly_;
   double availableMemoryPerCoreGB_;
+  double timerActuator_{0};
   double timerCreateMesh_;
   double timerPopulateMesh_;
   double timerPopulateFieldData_;
@@ -470,7 +473,6 @@ class Realm {
   double timerNonconformal_;
   double timerInitializeEqs_;
   double timerPropertyEval_;
-  double timerAdapt_;
   double timerTransferSearch_;
   double timerTransferExecute_;
   double timerSkinMesh_;
@@ -481,6 +483,7 @@ class Realm {
   OversetManager *oversetManager_;
   bool hasNonConformal_;
   bool hasOverset_;
+  bool isExternalOverset_{false};
 
   // three type of transfer operations
   bool hasMultiPhysicsTransfer_;
@@ -493,7 +496,7 @@ class Realm {
   bool hasFluids_;
 
   // global parameter list
-  stk::util::ParameterList globalParameters_;
+  std::unique_ptr<stk::util::ParameterList> globalParameters_;
 
   // part for all exposed surfaces in the mesh
   stk::mesh::Part *exposedBoundaryPart_;
@@ -513,9 +516,6 @@ class Realm {
 
   // some post processing of entity counts
   bool provideEntityCount_;
-
-  // pointer to HDF5 file structure holding table
-  HDF5FilePtr *HDF5ptr_;
 
   // automatic mesh decomposition; None, rib, rcb, multikl, etc.
   std::string autoDecompType_;
@@ -562,6 +562,7 @@ class Realm {
    *
    */
   stk::mesh::PartVector bcPartVec_;
+  stk::mesh::PartVector oversetBCPartVec_;
 
   // empty part vector should it be required
   stk::mesh::PartVector emptyPartVector_;
@@ -606,7 +607,8 @@ class Realm {
   double get_stefan_boltzmann();
   double get_turb_model_constant(
     const TurbulenceModelConstant turbModelEnum);
-  bool process_adaptivity();
+
+  TurbulenceModel get_turbulence_model() const;
 
   // element promotion options
   bool doPromotion_; // conto
@@ -631,13 +633,19 @@ class Realm {
   std::string physics_part_name(std::string) const;
   std::vector<std::string> physics_part_names(std::vector<std::string>) const;
 
-  // check for mesh changing
-  bool mesh_changed() const;
+  // high order
+  int polynomial_order() const;
+  bool matrix_free() const;
+  bool matrixFree_{false};
+
+  Teuchos::ParameterList solver_parameters(std::string) const;
 
   stk::mesh::PartVector allPeriodicInteractingParts_;
   stk::mesh::PartVector allNonConformalInteractingParts_;
 
   bool isFinalOuterIter_{false};
+
+  std::vector<stk::mesh::EntityId> hypreOffsets_;
 
   /** The starting index (global) of the HYPRE linear system in this MPI rank
    *
@@ -676,10 +684,13 @@ class Realm {
    */
   bool hypreIsActive_{false};
 
+  std::vector<std::string> handle_all_element_part_alias(const std::vector<std::string>& names) const;
+
 protected:
   std::unique_ptr<NgpMeshInfo> meshInfo_;
 
   unsigned meshModCount_{0};
+  const std::string allElementPartAlias{"all_blocks"};
 
 };
 

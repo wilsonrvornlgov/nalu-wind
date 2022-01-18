@@ -23,15 +23,12 @@
 
 // all concrete EquationSystem's
 #include <EnthalpyEquationSystem.h>
-#include <HeatCondEquationSystem.h>
 #include <LowMachEquationSystem.h>
-#include <MixtureFractionEquationSystem.h>
+#include <MatrixFreeHeatCondEquationSystem.h>
+#include <MatrixFreeLowMachEquationSystem.h>
 #include <ShearStressTransportEquationSystem.h>
-#include <MassFractionEquationSystem.h>
 #include <TurbKineticEnergyEquationSystem.h>
-#include <pmr/RadiativeTransportEquationSystem.h>
-#include <mesh_motion/MeshDisplacementEquationSystem.h>
-#include "WallDistEquationSystem.h"
+#include <WallDistEquationSystem.h>
 
 #include <overset/UpdateOversetFringeAlgorithmDriver.h>
 
@@ -104,102 +101,70 @@ void EquationSystems::load(const YAML::Node & y_node)
     
     const YAML::Node y_systems = expect_sequence(y_equation_system, "systems");
     {
-      for ( size_t isystem = 0; isystem < y_systems.size(); ++isystem )
-      {
-        const YAML::Node y_system = y_systems[isystem] ;
-        EquationSystem *eqSys = 0;
-	YAML::Node y_eqsys ;
-        if ( expect_map(y_system, "LowMachEOM", true) ) {
-	  y_eqsys =  expect_map(y_system, "LowMachEOM", true);
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = LowMachEOM " << std::endl;
+      for (size_t isystem = 0; isystem < y_systems.size(); ++isystem) {
+        const YAML::Node y_system = y_systems[isystem];
+        EquationSystem* eqSys = 0;
+        YAML::Node y_eqsys;
+        if (expect_map(y_system, "LowMachEOM", true)) {
+          y_eqsys = expect_map(y_system, "LowMachEOM", true);
+          if (root()->debug())
+            NaluEnv::self().naluOutputP0()
+              << "eqSys = LowMachEOM " << std::endl;
           bool elemCont = (realm_.realmUsesEdges_) ? false : true;
-          get_if_present_no_default(y_eqsys, "element_continuity_eqs", elemCont);
-          eqSys = new LowMachEquationSystem(*this, elemCont);
-        }
-        else if( expect_map(y_system, "ShearStressTransport", true) ) {
-	  y_eqsys =  expect_map(y_system, "ShearStressTransport", true);
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = tke/sdr " << std::endl;
+          get_if_present_no_default(
+            y_eqsys, "element_continuity_eqs", elemCont);
+
+          if (realm_.matrix_free()) {
+            eqSys = new MatrixFreeLowMachEquationSystem(*this);
+          } else {
+            eqSys = new LowMachEquationSystem(*this, elemCont);
+          }
+        } else if (expect_map(y_system, "ShearStressTransport", true)) {
+          y_eqsys = expect_map(y_system, "ShearStressTransport", true);
+          if (root()->debug())
+            NaluEnv::self().naluOutputP0() << "eqSys = tke/sdr " << std::endl;
           eqSys = new ShearStressTransportEquationSystem(*this);
-        }
-        else if( expect_map(y_system, "TurbKineticEnergy", true) ) {
-	  y_eqsys =  expect_map(y_system, "TurbKineticEnergy", true) ;
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = tke " << std::endl;
+        } else if (expect_map(y_system, "TurbKineticEnergy", true)) {
+          y_eqsys = expect_map(y_system, "TurbKineticEnergy", true);
+          if (root()->debug())
+            NaluEnv::self().naluOutputP0() << "eqSys = tke " << std::endl;
           eqSys = new TurbKineticEnergyEquationSystem(*this);
-        }
-        else if( expect_map(y_system, "MassFraction", true) ) {
-	  y_eqsys =  expect_map(y_system, "MassFraction", true);
-          int numSpecies = 1.0;
-          get_if_present_no_default(y_eqsys, "number_of_species", numSpecies);
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = Yk " << std::endl;
-          eqSys = new MassFractionEquationSystem(*this, numSpecies);
-        }
-        else if( expect_map(y_system, "MixtureFraction", true) ) {
-	  y_eqsys =  expect_map(y_system, "MixtureFraction", true) ;
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = mixFrac " << std::endl;
-          bool ouputClipDiag = false;
-          get_if_present_no_default(y_eqsys, "output_clipping_diagnostic", ouputClipDiag);
-          double deltaZClip = 0.0;
-          get_if_present_no_default(y_eqsys, "clipping_delta", deltaZClip);
-          eqSys = new MixtureFractionEquationSystem(*this, ouputClipDiag, deltaZClip);
-        }
-        else if( expect_map(y_system, "Enthalpy", true) ) {
-	  y_eqsys =  expect_map(y_system, "Enthalpy", true);
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = enthalpy " << std::endl;
+        } else if (expect_map(y_system, "Enthalpy", true)) {
+          y_eqsys = expect_map(y_system, "Enthalpy", true);
+          if (root()->debug())
+            NaluEnv::self().naluOutputP0() << "eqSys = enthalpy " << std::endl;
           double minT = 250.0;
           double maxT = 3000.0;
           get_if_present_no_default(y_eqsys, "minimum_temperature", minT);
           get_if_present_no_default(y_eqsys, "maximum_temperature", maxT);
           bool ouputClipDiag = true;
-          get_if_present_no_default(y_eqsys, "output_clipping_diagnostic", ouputClipDiag);
+          get_if_present_no_default(
+            y_eqsys, "output_clipping_diagnostic", ouputClipDiag);
           eqSys = new EnthalpyEquationSystem(*this, minT, maxT, ouputClipDiag);
-        }
-        else if( expect_map(y_system, "HeatConduction", true) ) {
-	  y_eqsys =  expect_map(y_system, "HeatConduction", true);
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = HeatConduction " << std::endl;
-          eqSys = new HeatCondEquationSystem(*this);
-        }
-        else if( expect_map(y_system, "RadiativeTransport", true) ) {
-	  y_eqsys =  expect_map(y_system, "RadiativeTransport", true);
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = RadiativeTransport " << std::endl;
-          int quadratureOrder = 2;
-          get_if_present_no_default(y_eqsys, "quadrature_order", quadratureOrder);
-          bool activateScattering = false;
-          bool activatePmrUpwind = false;
-          bool deactivatePmrSucv = false;
-          bool externalCoupling = false;
-          get_if_present_no_default(y_eqsys, "activate_scattering", activateScattering);
-          get_if_present_no_default(y_eqsys, "activate_upwind", activatePmrUpwind);
-          get_if_present_no_default(y_eqsys, "deactivate_sucv", deactivatePmrSucv);
-          get_if_present_no_default(y_eqsys, "external_coupling", externalCoupling);
-          if ( externalCoupling )
-            NaluEnv::self().naluOutputP0() << "PMR External Coupling; absorption coefficient/radiation_source expected by xfer" << std::endl;
-          if ( activatePmrUpwind )
-            NaluEnv::self().naluOutputP0() << "PMR residual stabilization is off, pure upwind will be used" << std::endl;
-
-          eqSys = new RadiativeTransportEquationSystem(*this,
-            quadratureOrder, activateScattering, activatePmrUpwind, deactivatePmrSucv, externalCoupling);
-        }
-        else if( expect_map(y_system, "MeshDisplacement", true) ) {
-	  y_eqsys =  expect_map(y_system, "MeshDisplacement", true) ;
-          bool activateMass = false;
-          bool deformWrtModelCoords = false;
-          get_if_present_no_default(y_eqsys, "activate_mass", activateMass);
-          get_if_present_no_default(y_eqsys, "deform_wrt_model_coordinates", deformWrtModelCoords);
-          if (root()->debug()) NaluEnv::self().naluOutputP0() << "eqSys = MeshDisplacement " << std::endl;
-          eqSys = new MeshDisplacementEquationSystem(*this, activateMass, deformWrtModelCoords);
-        }
-        else if (expect_map(y_system, "WallDistance", true)) {
+        } else if (expect_map(y_system, "HeatConduction", true)) {
+          y_eqsys = expect_map(y_system, "HeatConduction", true);
+          if (root()->debug())
+            NaluEnv::self().naluOutputP0()
+              << "eqSys = HeatConduction " << std::endl;
+          if (realm_.matrix_free()) {
+            eqSys = new MatrixFreeHeatCondEquationSystem(*this);
+          } else {
+            throw std::runtime_error(
+              "HeatConduction only supported for matrix-free");
+          }
+        } else if (expect_map(y_system, "WallDistance", true)) {
           y_eqsys = expect_map(y_system, "WallDistance", true);
           eqSys = new WallDistEquationSystem(*this);
-        }
-        else {
+        } else {
           if (!NaluEnv::self().parallel_rank()) {
-            std::cout << "Error: parsing at " << NaluParsingHelper::info(y_system) 
-                      << "... at parent ... " << NaluParsingHelper::info(y_node) << std::endl;
+            std::cout << "Error: parsing at "
+                      << NaluParsingHelper::info(y_system)
+                      << "... at parent ... " << NaluParsingHelper::info(y_node)
+                      << std::endl;
           }
-          throw std::runtime_error("parser error EquationSystem::load: unknown equation system type");
+          throw std::runtime_error(
+            "parser error EquationSystem::load: unknown equation system type");
         }
-
 
         // Pass the global settings for the overset decoupled solves to equation
         // systems and let user override for individual equation systems in the
@@ -220,7 +185,7 @@ void EquationSystems::load(const YAML::Node & y_node)
 //--------------------------------------------------------------------------
 std::string
 EquationSystems::get_solver_block_name(
-  const std::string eqName ) {
+  const std::string eqName ) const {
   std::string solverName = "n_a";
   std::map<std::string, std::string>::const_iterator iter
     = solverSpecMap_.find(eqName);
@@ -630,12 +595,8 @@ EquationSystems::register_non_conformal_bc(
 //-------- register_overset_bc ---------------------------------------------
 //--------------------------------------------------------------------------
 void
-EquationSystems::register_overset_bc(
-  const OversetBoundaryConditionData &oversetBCData)
+EquationSystems::register_overset_bc(const OversetBoundaryConditionData&)
 {
-  // set up the overset bc, e.g., manager, parts, etc.
-  realm_.setup_overset_bc(oversetBCData);
-
   // register algs on the equation system
   EquationSystemVector::iterator ii;
   for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii )
@@ -718,6 +679,8 @@ EquationSystems::initialize()
     NaluEnv::self().naluOutputP0()
       << "EquationSystems: overset solution strategy" << std::endl;
     for (auto* eqsys: equationSystemVector_) {
+      // Skip wrapper equations LowMach, SST etc.
+      if (eqsys->linsys_ == nullptr) continue;
       NaluEnv::self().naluOutputP0()
         << " - " << eqsys->eqnTypeName_ << ": "
         << (eqsys->decoupledOverset_ ? "decoupled" : "coupled") << std::endl;
@@ -740,24 +703,6 @@ EquationSystems::reinitialize_linear_system()
   }
   double end_time = NaluEnv::self().nalu_time();
   realm_.timerInitializeEqs_ += (end_time-start_time);
-}
-
-//--------------------------------------------------------------------------
-//-------- post_adapt_work() -----------------------------------------------
-//--------------------------------------------------------------------------
-void
-EquationSystems::post_adapt_work()
-{
-  double time = -NaluEnv::self().nalu_time();
-  for( EquationSystem* eqSys : equationSystemVector_ )
-    eqSys->post_adapt_work();
-  
-  // everyone needs props to be done..
-  realm_.evaluate_properties();
-
-  // load all time to adapt
-  time += NaluEnv::self().nalu_time();
-  realm_.timerAdapt_ += time;
 }
 
 //--------------------------------------------------------------------------
@@ -886,6 +831,20 @@ EquationSystems::populate_boundary_data()
   for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii ) {
     for ( size_t k = 0; k < (*ii)->bcDataAlg_.size(); ++k ) {
       (*ii)->bcDataAlg_[k]->execute();
+    }
+  }
+}
+
+//--------------------------------------------------------------------------
+//-------- post_external_data_transfer_work --------------------------------
+//--------------------------------------------------------------------------
+void
+EquationSystems::post_external_data_transfer_work()
+{
+  EquationSystemVector::iterator ii;
+  for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii ) {
+    for ( size_t k = 0; k < (*ii)->bcDataAlg_.size(); ++k ) {
+      (*ii)->post_external_data_transfer_work();
     }
   }
 }

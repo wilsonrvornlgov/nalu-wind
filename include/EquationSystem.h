@@ -13,13 +13,16 @@
 #define EquationSystem_h
 
 #include "KokkosInterface.h"
-#include "NaluParsing.h"
+#include "NaluParsedTypes.h"
 #include "Realm.h"
 #include "PecletFunction.h"
 #include "NGPInstance.h"
 #include "SimdInterface.h"
 
-#include <stk_ngp/Ngp.hpp>
+#include<NaluParsedTypes.h>
+
+#include <stk_mesh/base/Ngp.hpp>
+#include <stk_mesh/base/NgpMesh.hpp>
 
 namespace stk{
 struct topology;
@@ -162,10 +165,11 @@ public:
   virtual void reinitialize_linear_system() {}
   virtual void post_adapt_work() {}
   virtual void dump_eq_time();
-  virtual double provide_scaled_norm();
-  virtual double provide_norm();
-  virtual double provide_norm_increment();
-  virtual bool system_is_converged();
+  virtual double provide_scaled_norm() const;
+  virtual double provide_norm() const;
+  virtual double provide_norm_increment() const;
+  virtual bool system_is_converged() const;
+  virtual void post_external_data_transfer_work() {};
   
   virtual void register_wall_bc(
     stk::mesh::Part * /* part */,
@@ -190,10 +194,7 @@ public:
   virtual void register_abltop_bc(
     stk::mesh::Part *part,
     const stk::topology &theTopo,
-    const ABLTopBoundaryConditionData &abltopBCData) {
-      SymmetryBoundaryConditionData simData(abltopBCData.boundaryConditions_);
-      register_symmetry_bc( part, theTopo, simData );
-    }
+    const ABLTopBoundaryConditionData &abltopBCData);
 
   virtual void register_periodic_bc(
     stk::mesh::Part * /* partMaster */,
@@ -321,7 +322,7 @@ public:
 
   virtual void save_diagonal_term(
     unsigned,
-    const ngp::Mesh::ConnectedNodes&,
+    const stk::mesh::NgpMesh::ConnectedNodes&,
     const SharedMemView<const double**,DeviceShmem>&
   ) {}
 
@@ -357,6 +358,7 @@ public:
   bool decoupledOverset_{false};
 
   bool extractDiagonal_{false};
+  bool resetOversetRows_{true};
 
 
   virtual ScalarFieldType* get_diagonal_field() { return nullptr; }

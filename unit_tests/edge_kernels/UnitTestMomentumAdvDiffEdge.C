@@ -72,7 +72,6 @@ TEST_F(MomentumEdgeHex8Mesh, NGP_advection_diffusion)
 
   // Setup solution options for default advection kernel
   solnOpts_.meshMotion_ = false;
-  solnOpts_.meshDeformation_ = false;
   solnOpts_.externalMeshDeformation_ = false;
   solnOpts_.alphaMap_["velocity"] = 0.0;
   solnOpts_.alphaUpwMap_["velocity"] = 0.0;
@@ -87,7 +86,7 @@ TEST_F(MomentumEdgeHex8Mesh, NGP_advection_diffusion)
   EXPECT_EQ(helperObjs.linsys->lhs_.extent(0), 24u);
   EXPECT_EQ(helperObjs.linsys->lhs_.extent(1), 24u);
   EXPECT_EQ(helperObjs.linsys->rhs_.extent(0), 24u);
-  EXPECT_EQ(helperObjs.linsys->numSumIntoCalls_(0), 12);
+  EXPECT_EQ(helperObjs.linsys->numSumIntoCalls_(0), 12u);
 
   namespace gold_values = ::hex8_golds::adv_diff;
   unit_test_kernel_utils::expect_all_near(

@@ -7,20 +7,10 @@
 // for more details.
 //
 
-
-
 #include <Realm.h>
 #include <Simulation.h>
 #include <NaluEnv.h>
-#include <InterfaceBalancer.h>
-
-// percept
-#if defined (NALU_USES_PERCEPT)
-#include <adapt/AdaptedMeshVerifier.hpp>
-#include <adapt/AdaptHelperFunctions.hpp>
-#include <percept/PerceptMesh.hpp>
-#include <Adapter.h>
-#endif
+#include <stk_mesh/base/GetNgpField.hpp>
 
 #include <AuxFunction.h>
 #include <AuxFunctionAlgorithm.h>
@@ -29,9 +19,9 @@
 #include <EntityExposedFaceSorter.h>
 #include <EquationSystem.h>
 #include <EquationSystems.h>
-#include <ErrorIndicatorAlgorithmDriver.h>
 #include <FieldTypeDef.h>
 #include <LinearSystem.h>
+#include <LinearSolvers.h>
 #include <master_element/MasterElement.h>
 #include <master_element/MasterElementFactory.h>
 #include <MaterialPropertys.h>
@@ -45,6 +35,7 @@
 #include <PeriodicManager.h>
 #include <Realms.h>
 #include <SolutionOptions.h>
+#include <SideWriter.h>
 #include <TimeIntegrator.h>
 
 #include <element_promotion/PromoteElement.h>
@@ -55,8 +46,7 @@
 
 // mesh motion
 #include <mesh_motion/MeshMotionAlg.h>
-
-#include <nalu_make_unique.h>
+#include <mesh_motion/MeshTransformationAlg.h>
 
 // overset
 #include <overset/OversetManager.h>
@@ -72,18 +62,13 @@
 #include <wind_energy/BdyLayerStatistics.h>
 
 // actuator line
-#include <actuator/Actuator.h>
-#ifdef NALU_USES_OPENFAST
-#include <actuator/ActuatorLineFAST.h>
-#include <actuator/ActuatorDiskFAST.h>
-#endif
+#include <actuator/ActuatorModel.h>
 
 #include <wind_energy/ABLForcingAlgorithm.h>
 #include <wind_energy/SyntheticLidar.h>
 
 // props; algs, evaluators and data
 #include <property_evaluator/GenericPropAlgorithm.h>
-#include <property_evaluator/HDF5TablePropAlgorithm.h>
 #include <property_evaluator/InverseDualVolumePropAlgorithm.h>
 #include <property_evaluator/InversePropAlgorithm.h>
 #include <property_evaluator/TemperaturePropAlgorithm.h>
@@ -98,9 +83,6 @@
 #include <property_evaluator/WaterPropertyEvaluator.h>
 #include <property_evaluator/MaterialPropertyData.h>
 
-// tables
-#include <tabular_props/HDF5FilePtr.h>
-
 // transfer
 #include <xfer/Transfer.h>
 
@@ -108,15 +90,22 @@
 #include "ngp_utils/NgpTypes.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldBLAS.h"
+#include "ngp_utils/NgpFieldManager.h"
+#include "ngp_utils/NgpFieldUtils.h"
 #include "ngp_algorithms/GeometryAlgDriver.h"
 #include "ngp_algorithms/GeometryInteriorAlg.h"
 #include "ngp_algorithms/GeometryBoundaryAlg.h"
+
+#include "gcl/MeshVelocityAlg.h"
+#include "gcl/MeshVelocityEdgeAlg.h"
+#include "AlgTraits.h"
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
 #include <stk_util/environment/WallTime.hpp>
 #include <stk_util/environment/perf_util.hpp>
 #include <stk_util/environment/FileUtils.hpp>
+#include <stk_util/util/ParameterList.hpp>
 
 // stk_mesh/base/fem
 #include <stk_mesh/base/BulkData.hpp>
@@ -130,6 +119,8 @@
 #include <stk_mesh/base/CreateEdges.hpp>
 #include <stk_mesh/base/SkinBoundary.hpp>
 #include <stk_mesh/base/FieldBLAS.hpp>
+#include <stk_mesh/base/NgpMesh.hpp>
+#include <stk_mesh/base/GetNgpField.hpp>
 
 // stk_io
 #include <stk_io/StkMeshIoBroker.hpp>
@@ -141,6 +132,7 @@
 #include <stk_util/parallel/ParallelReduce.hpp>
 
 // stk_balance
+#include <Zoltan2_config.h>
 #include <stk_balance/balance.hpp>
 #include <stk_balance/balanceUtils.hpp>
 
@@ -159,8 +151,10 @@
 #include <utility>
 #include <stdint.h>
 
+#ifdef NALU_USES_CATALYST
 // catalyst visualization output
-#include <Iovs_DatabaseIO.h>
+#include <Iovs_exodus_DatabaseIO.h>
+#endif
 
 #define USE_NALU_PERFORMANCE_TESTING_CALLGRIND 0
 #if USE_NALU_PERFORMANCE_TESTING_CALLGRIND
@@ -178,13 +172,13 @@ namespace nalu{
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
-  Realm::Realm(Realms& realms, const YAML::Node & node)
+Realm::Realm(Realms& realms, const YAML::Node& node)
   : realms_(realms),
     name_("na"),
     type_("multi_physics"),
     inputDBName_("input_unknown"),
-    spatialDimension_(3u),  // for convenience; can always get it from meta data
-    realmUsesEdges_(false),
+    spatialDimension_(3u), // for convenience; can always get it from meta data
+    realmUsesEdges_(true),
     solveFrequency_(1),
     isTurbulent_(false),
     needsEnthalpy_(false),
@@ -192,12 +186,9 @@ namespace nalu{
     metaData_(NULL),
     bulkData_(NULL),
     ioBroker_(NULL),
+    sideWriters_(new SideWriterContainer()),
     resultsFileIndex_(99),
     restartFileIndex_(99),
-    errorIndicatorAlgDriver_(0),
-#if defined (NALU_USES_PERCEPT)
-    adapter_(0),
-#endif
     numInitialElements_(0),
     timeIntegrator_(0),
     boundaryConditions_(*this),
@@ -215,7 +206,6 @@ namespace nalu{
     solutionNormPostProcessing_(NULL),
     turbulenceAveragingPostProcessing_(NULL),
     dataProbePostProcessing_(NULL),
-    actuator_(NULL),
     ablForcingAlg_(NULL),
     nodeCount_(0),
     estimateMemoryOnly_(false),
@@ -228,7 +218,6 @@ namespace nalu{
     timerNonconformal_(0.0),
     timerInitializeEqs_(0.0),
     timerPropertyEval_(0.0),
-    timerAdapt_(0.0),
     timerTransferSearch_(0.0),
     timerTransferExecute_(0.0),
     timerSkinMesh_(0.0),
@@ -245,7 +234,7 @@ namespace nalu{
     periodicManager_(NULL),
     hasPeriodic_(false),
     hasFluids_(false),
-    globalParameters_(),
+    globalParameters_(new stk::util::ParameterList()),
     exposedBoundaryPart_(0),
     edgesPart_(0),
     checkForMissingBcs_(false),
@@ -253,7 +242,6 @@ namespace nalu{
     isothermalFlow_(true),
     uniformFlow_(true),
     provideEntityCount_(false),
-    HDF5ptr_(NULL),
     autoDecompType_("None"),
     activateAura_(false),
     activateMemoryDiagnostic_(false),
@@ -262,7 +250,7 @@ namespace nalu{
     balanceNodeOptions_(),
     wallTimeStart_(stk::wall_time()),
     doPromotion_(false),
-    promotionOrder_(0u),
+    promotionOrder_(1u),
     inputMeshIdx_(std::numeric_limits<size_t>::max()),
     node_(node)
 {
@@ -281,14 +269,6 @@ Realm::~Realm()
   delete bulkData_;
   delete metaData_;
   delete ioBroker_;
-
-  if ( NULL != errorIndicatorAlgDriver_)
-    delete errorIndicatorAlgDriver_;
-
-#if defined (NALU_USES_PERCEPT)
-  if ( NULL != adapter_)
-    delete adapter_;
-#endif
 
   // prop algs
   std::vector<Algorithm *>::iterator ii;
@@ -316,9 +296,6 @@ Realm::~Realm()
   if ( NULL != dataProbePostProcessing_ )
     delete dataProbePostProcessing_;
 
-  if ( NULL != actuator_ )
-    delete actuator_;
-
   // delete non-conformal related things
   if ( NULL != nonConformalManager_ )
     delete nonConformalManager_;
@@ -326,10 +303,6 @@ Realm::~Realm()
   // delete periodic related things
   if ( NULL != periodicManager_ )
     delete periodicManager_;
-
-  // delete HDF5 file ptr
-  if ( NULL != HDF5ptr_ )
-    delete HDF5ptr_;
 
   // Delete abl forcing pointer
   if (NULL != ablForcingAlg_) delete ablForcingAlg_;
@@ -426,16 +399,9 @@ Realm::convert_bytes(double bytes)
   return out.str();
 }
 
-//--------------------------------------------------------------------------
-//-------- initialize -----------------------------------------------
-//--------------------------------------------------------------------------
-void
-Realm::initialize()
+void Realm::initialize_prolog()
 {
   NaluEnv::self().naluOutputP0() << "Realm::initialize() Begin " << std::endl;
-
-  // initialize adaptivity - note: must be done before field registration
-  setup_adaptivity();
 
   if (doPromotion_) {
     setup_element_promotion();
@@ -453,7 +419,7 @@ Realm::initialize()
 
   // create boundary conditions
   setup_bc();
-  
+
   // post processing algorithm creation
   setup_post_processing_algorithms();
 
@@ -496,14 +462,7 @@ Realm::initialize()
 
   // rebalance mesh using stk_balance
   if (rebalanceMesh_) {
-#ifndef HAVE_ZOLTAN2_PARMETIS
-  if (rebalanceMethod_ == "parmetis")
-    throw std::runtime_error("Zoltan2 is not built with parmetis enabled, "
-                             "try a geometric balance method instead (rcb or rib)");
-#endif
-    stk::balance::GraphCreationSettings rebalanceSettings;
-    rebalanceSettings.setDecompMethod(rebalanceMethod_);
-    stk::balance::balanceStkMesh(rebalanceSettings, *bulkData_);
+    rebalance_mesh();
   }
 
   if (doBalanceNodes_) {
@@ -532,7 +491,7 @@ Realm::initialize()
     bulkData_->sort_entities(EntityExposedFaceSorter());
     timerSortExposedFace_ += (NaluEnv::self().nalu_time() - timeSort);
   }
-  
+
   // variables that may come from the initial mesh
   input_variables_from_mesh();
 
@@ -548,6 +507,9 @@ Realm::initialize()
   if ( hasPeriodic_ )
     periodicManager_->build_constraints();
 
+  if ( solutionOptions_->meshTransformation_ )
+    meshTransformationAlg_->initialize( get_current_time() );
+
   if ( solutionOptions_->meshMotion_ )
     meshMotionAlg_->initialize( get_current_time() );
 
@@ -558,10 +520,10 @@ Realm::initialize()
 
   if ( hasNonConformal_ )
     initialize_non_conformal();
+}
 
-  if ( hasOverset_ )
-    initialize_overset();
-
+void Realm::initialize_epilog()
+{
   initialize_post_processing_algorithms();
 
   compute_l2_scaling();
@@ -625,49 +587,10 @@ Realm::look_ahead_and_creation(const YAML::Node & node)
   NaluParsingHelper::find_nodes_given_key("actuator", node, foundActuator);
   if ( foundActuator.size() > 0 ) {
     if ( foundActuator.size() != 1 )
-      throw std::runtime_error("look_ahead_and_create::error: Too many actuator line blocks");
-
-    if ( (*foundActuator[0])["actuator"]["type"] ) {
-      const std::string ActuatorTypeName = (*foundActuator[0])["actuator"]["type"].as<std::string>() ;
-      switch ( ActuatorTypeMap[ActuatorTypeName] ) {
-      case ActuatorType::ActLineFAST : {
-#ifdef NALU_USES_OPENFAST
-	actuator_ =  new ActuatorLineFAST(*this, *foundActuator[0]);
-	break;
-#else
-	throw std::runtime_error("look_ahead_and_create::error: Requested actuator type: " + ActuatorTypeName + ", but was not enabled at compile time");
-// Avoid nvcc unreachable statement warnings
-#ifndef __CUDACC__
-	break;
-#endif
-#endif
-      }
-      case ActuatorType::ActDiskFAST : {
-#ifdef NALU_USES_OPENFAST
-	actuator_ =  new ActuatorDiskFAST(*this, *foundActuator[0]);
-	break;
-#else
-	throw std::runtime_error("look_ahead_and_create::error: Requested actuator type: " + ActuatorTypeName + ", but was not enabled at compile time");
-// Avoid nvcc unreachable statement warnings
-#ifndef __CUDACC__
-	break;
-#endif
-#endif
-      }
-      default : {
-        throw std::runtime_error("look_ahead_and_create::error: unrecognized actuator type: " + ActuatorTypeName);
-// Avoid nvcc unreachable statement warnings
-#ifndef __CUDACC__
-        break;
-#endif
-      }
-      }
-    }
-    else {
-      throw std::runtime_error("look_ahead_and_create::error: No 'type' specified in actuator");
-    }
-
-    
+      throw std::runtime_error(
+        "look_ahead_and_create::error: Too many actuator line blocks");
+    actuatorModel_ = std::make_unique<ActuatorModel>();
+    actuatorModel_->parse(*foundActuator[0]);
   }
 
   // Boundary Layer Statistics post-processing
@@ -719,17 +642,36 @@ Realm::load(const YAML::Node & node)
   get_if_present(node, "use_edges", realmUsesEdges_, realmUsesEdges_);
 
   get_if_present(node, "polynomial_order", promotionOrder_, promotionOrder_);
-  if (promotionOrder_ >=1) {
-    throw std::runtime_error("Mesh promotion not available");
+  if (promotionOrder_ > 2) {
     doPromotion_ = true;
+  }
+
+  if (promotionOrder_ >= 5) {
+    throw std::runtime_error("Only polynomial orders 1-4 supported");
+  }
+
+  get_if_present(node, "matrix_free", matrixFree_, matrixFree_);
+  if (polynomial_order() > 1 && !matrixFree_) {
+    throw std::runtime_error("Polynomial orders > 1 must be matrix free");
+  }
+
+  if (matrixFree_) {
+    NaluEnv::self().naluOutputP0()
+      << "Warning: matrix free capability is experimental and only supports a "
+         "limited set of use cases"
+      << std::endl;
   }
 
   // let everyone know about core algorithm
   if ( realmUsesEdges_ ) {
     NaluEnv::self().naluOutputP0() << "Edge-based scheme will be activated" << std::endl;
   }
-  else {
-    NaluEnv::self().naluOutputP0() <<"Element-based scheme will be activated" << std::endl;
+  else if (matrixFree_) {
+    NaluEnv::self().naluOutputP0()
+      << "Matrix-free scheme will be activated" << std::endl;
+  } else {
+    throw std::runtime_error(
+      "Realm: Nalu-Wind only supports edge-based or matrix-free schemes");
   }
 
   // how often is the realm solved..
@@ -795,15 +737,19 @@ Realm::load(const YAML::Node & node)
   // Parse catalyst input file if requested
   if(!outputInfo_->catalystFileName_.empty())
   {
-  int error = Iovs::DatabaseIO::parseCatalystFile(outputInfo_->catalystFileName_,
+#ifdef NALU_USES_CATALYST
+  int error = Iovs_exodus::DatabaseIO::parseCatalystFile(outputInfo_->catalystFileName_,
                                                   outputInfo_->catalystParseJson_);
   if(error)
     throw std::runtime_error("Catalyst file parse failed: " + outputInfo_->catalystFileName_);
+#else
+    throw std::runtime_error("Nalu-Wind not built with Catalyst support");
+#endif
   }
 
-  // solution options - loaded before create_mesh since we need to know if
-  // adaptivity is on to create the proper MetaData
+  // solution options - loaded before create_mesh
   solutionOptions_->load(node);
+  sideWriters_->load(node);
 
   // once we know the mesh name, we can open the meta data, and set spatial dimension
   create_mesh();
@@ -832,12 +778,23 @@ Realm::load(const YAML::Node & node)
     equationSystems_.load(node);
   }
 
+  // second set of options: mesh transformation... this means that the Realm will expect to provide mesh transformation
+  const YAML::Node meshTransformationNode = expect_sequence(node, "mesh_transformation", true);
+  if (meshTransformationNode)
+  {
+    // mesh motion is active
+    solutionOptions_->meshTransformation_ = true;
+
+    // instantiate mesh transformation class once the mesh has been created
+    meshTransformationAlg_.reset(new MeshTransformationAlg( *bulkData_, meshTransformationNode));
+  }
+
   // second set of options: mesh motion... this means that the Realm will expect to provide mesh motion
   const YAML::Node meshMotionNode = expect_sequence(node, "mesh_motion", true);
   if (meshMotionNode)
   {
     // has a user stated that mesh motion is external?
-    if ( solutionOptions_->meshDeformation_ ) {
+    if ( solutionOptions_->externalMeshDeformation_ ) {
       NaluEnv::self().naluOutputP0() << "mesh motion set to external (will prevail over mesh motion specification)!" << std::endl;
     }
     else {
@@ -858,46 +815,6 @@ Simulation *Realm::root() { return parent()->root(); }
 Simulation *Realm::root() const { return parent()->root(); }
 Realms *Realm::parent() { return &realms_; }
 Realms *Realm::parent() const { return &realms_; }
-
-
-//--------------------------------------------------------------------------
-//-------- setup_adaptivity ------------------------------------------------
-//--------------------------------------------------------------------------
-void
-Realm::setup_adaptivity()
-{
-#if defined (NALU_USES_PERCEPT)
-
-  if ((solutionOptions_->activateUniformRefinement_ ||
-       (solutionOptions_->useAdapter_ && solutionOptions_->maxRefinementLevel_ > 0)) && NULL == adapter_) {
-      adapter_ = new Adapter(*this);
-      // get the part that holds the "parent" elements, that is, elements that have been refined
-      //   and thus have child elements - we want to avoid them in each bucket loop
-      stk::mesh::EntityRank part_ranks[] = {stk::topology::ELEMENT_RANK, metaData_->side_rank()};
-      unsigned nranks = 2;
-      for (unsigned irank=0; irank < nranks; ++irank) {
-        std::ostringstream inactive_part_name;
-        inactive_part_name << "refine_inactive_elements_part_" << static_cast<unsigned int>(part_ranks[irank]);
-        //stk::mesh::Part* child_elements_part = m_eMesh.get_non_const_part(active_part_name);
-        stk::mesh::Part* parent_elements_part = metaData_->get_part(inactive_part_name.str());
-        if (!parent_elements_part)
-          throw std::runtime_error("error - no parent_elements_part can be found");
-        adapterSelector_[part_ranks[irank]] = !stk::mesh::Selector(*parent_elements_part);
-      }
-  }
-
-  // fields
-  if (solutionOptions_->useMarker_)
-    {
-      percept::RefineFieldType *refineField= &(metaData_->declare_field<percept::RefineFieldType>(stk::topology::ELEMENT_RANK, "refine_field"));
-      stk::mesh::put_field_on_mesh(*refineField, metaData_->universal_part(), nullptr);
-      percept::RefineFieldType *refineFieldOrig= &(metaData_->declare_field<percept::RefineFieldType>(stk::topology::ELEMENT_RANK, "refine_field_orig"));
-      stk::mesh::put_field_on_mesh(*refineFieldOrig, metaData_->universal_part(), nullptr);
-      percept::RefineLevelType& refine_level = metaData_->declare_field<percept::RefineLevelType>(stk::topology::ELEMENT_RANK, "refine_level");
-      stk::mesh::put_field_on_mesh( refine_level , metaData_->universal_part(), nullptr);
-    }
-#endif
-}
 
 //--------------------------------------------------------------------------
 //-------- setup_nodal_fields ----------------------------------------------
@@ -951,6 +868,28 @@ Realm::setup_element_fields()
   // loop over all material props targets and register element fields
   std::vector<std::string> targetNames = get_physics_target_names();
   equationSystems_.register_element_fields(targetNames);
+
+  const int numVolStates = does_mesh_move() ? number_of_states() : 1;
+
+  if (has_mesh_deformation()) {
+    const auto entityRank = realmUsesEdges_ ? stk::topology::EDGE_RANK : stk::topology::ELEM_RANK;
+    const std::string fvm_fieldName = realmUsesEdges_ ? "edge_face_velocity_mag" :  "face_velocity_mag";
+    const std::string sv_fieldName = realmUsesEdges_ ? "edge_swept_face_volume" :  "swept_face_volume";
+    GenericFieldType* faceVelMag = &(metaData_->declare_field<GenericFieldType>(
+                                     entityRank, fvm_fieldName));
+    GenericFieldType* sweptFaceVolume = &(metaData_->declare_field<GenericFieldType>(
+                                          entityRank, sv_fieldName, numVolStates));
+    for (auto target: targetNames) {
+      auto * targetPart = metaData_->get_part(target);
+      auto fieldSize = 1;
+      if ( !realmUsesEdges_ ) {
+        auto *meSCS = sierra::nalu::MasterElementRepo::get_surface_master_element(targetPart->topology());
+        fieldSize = meSCS->num_integration_points();
+      }
+      stk::mesh::put_field_on_mesh(*faceVelMag, *targetPart, fieldSize, nullptr);
+      stk::mesh::put_field_on_mesh(*sweptFaceVolume, *targetPart, fieldSize, nullptr);
+    }
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -959,12 +898,22 @@ Realm::setup_element_fields()
 void
 Realm::setup_interior_algorithms()
 {
-
-  // create adaptivity error algorithm
-  if ( solutionOptions_->activateAdaptivity_) {
-    if ( NULL == errorIndicatorAlgDriver_ )
-      errorIndicatorAlgDriver_ = new ErrorIndicatorAlgorithmDriver(*this);
+  if (has_mesh_deformation()) {
+    const AlgorithmType algType = INTERIOR;
+    stk::mesh::PartVector mmPartVec = meshMotionAlg_->get_partvec();
+    if (realmUsesEdges_){
+      for (auto p: mmPartVec) {
+        geometryAlgDriver_->register_elem_algorithm<
+          MeshVelocityEdgeAlg>(algType, p, "mesh_vel");
+      }
+    } else {
+      for (auto p: mmPartVec) {
+        geometryAlgDriver_->register_elem_algorithm<
+          MeshVelocityAlg>(algType, p, "mesh_vel");
+      }
+    }
   }
+
   // loop over all material props targets and register interior algs
   std::vector<std::string> targetNames = get_physics_target_names();
   equationSystems_.register_interior_algorithm(targetNames);
@@ -1033,9 +982,8 @@ Realm::setup_post_processing_algorithms()
     dataProbePostProcessing_->setup();
   }
 
-  // check for actuator line
-  if ( NULL != actuator_ )
-    actuator_->setup();
+  if (actuatorModel_)
+    actuatorModel_->setup(get_time_step_from_file(), bulk_data());
 
   // check for norm nodal fields
   if ( NULL != solutionNormPostProcessing_ )
@@ -1086,16 +1034,17 @@ Realm::setup_bc()
       case NON_CONFORMAL_BC:
         equationSystems_.register_non_conformal_bc(*reinterpret_cast<const NonConformalBoundaryConditionData *>(&bc));
         break;
-      case OVERSET_BC:
-        equationSystems_.register_overset_bc(*reinterpret_cast<const OversetBoundaryConditionData *>(&bc));
+      case OVERSET_BC: {
+        const OversetBoundaryConditionData& obc =
+          reinterpret_cast<const OversetBoundaryConditionData&>(bc);
+        setup_overset_bc(obc);
+        equationSystems_.register_overset_bc(obc);
         break;
+      }
       default:
         throw std::runtime_error("unknown bc");
     }
   }
-
-  if (hasOverset_)
-    oversetManager_->setup();
 }
 
 //--------------------------------------------------------------------------
@@ -1176,13 +1125,18 @@ Realm::setup_initial_conditions()
   for (size_t j_ic = 0; j_ic < initialConditions_.size(); ++j_ic) {
     InitialCondition& initCond = *initialConditions_[j_ic];
 
-    const std::vector<std::string> targetNames = initCond.targetNames_;
+    const std::vector<std::string> targetNames = handle_all_element_part_alias(initCond.targetNames_);
 
     for (size_t itarget=0; itarget < targetNames.size(); ++itarget) {
       const std::string targetName = physics_part_name(targetNames[itarget]);
 
       // target need not be subsetted since nothing below will depend on topo
       stk::mesh::Part *targetPart = metaData_->get_part(targetName);
+      if (!targetPart) {
+        throw std::runtime_error(
+          "Part: " + targetName +
+          " in the initial_conditions target does not exist.");
+      }
 
       switch(initCond.theIcType_) {
 
@@ -1244,6 +1198,11 @@ Realm::setup_property()
 
     // target need not be subsetted since nothing below will depend on topo
     stk::mesh::Part *targetPart = metaData_->get_part(targetNames[itarget]);
+    if (!targetPart) {
+      throw std::runtime_error(
+        "Part: " + targetNames[itarget] +
+        " in the material_properties target does not exist.");
+    }
 
     // loop over propertyMap
     std::map<PropertyIdentifier, ScalarFieldType *>::iterator ii;
@@ -1587,48 +1546,6 @@ Realm::setup_property()
         }
         break;
 
-        case HDF5_TABLE_MAT:
-        {
-	  if ( HDF5ptr_ == NULL ) {
-	    HDF5ptr_ = new HDF5FilePtr( materialPropertys_.propertyTableName_ );
-	  }
-
- 	  // create the new TablePropAlgorithm that knows how to read from HDF5 file
- 	  HDF5TablePropAlgorithm * auxAlg = new HDF5TablePropAlgorithm(*this, 
-								       targetPart, 
-								       HDF5ptr_->get_H5IO(),
-								       thePropField, 
-								       matData->tablePropName_, 
-								       matData->indVarName_, 
-								       matData->indVarTableName_,
-								       *metaData_ );
-          propertyAlg_.push_back(auxAlg);
-
-	  NaluEnv::self().naluOutputP0() << "With " << matData->tablePropName_ << " also read table for auxVarName " <<matData->auxVarName_  << std::endl;
-	  
-	  //TODO : need to make auxVarName_ and tableAuxVarName_ into vectors and loop over them to create a set of new auxVar's and algorithms
-
-          // auxVariable	  
-          std::string auxVarName = matData->auxVarName_;
-          if ( "na" != auxVarName ) {
-            // register and put the field; assume a scalar for now; species extraction will complicate the matter
-            ScalarFieldType *auxVar =  &(metaData_->declare_field<ScalarFieldType>(stk::topology::NODE_RANK, auxVarName));
-            stk::mesh::put_field_on_mesh(*auxVar, *targetPart, nullptr);
-            // create the algorithm to populate it from an HDF5 file
-	    HDF5TablePropAlgorithm * auxVarAlg = new HDF5TablePropAlgorithm(*this, 
-									 targetPart, 
-									 HDF5ptr_->get_H5IO(),
-									 auxVar, 
-									 matData->tableAuxVarName_, 
-									 matData->indVarName_, 
-									 matData->indVarTableName_,
-									 *metaData_ );
-            propertyAlg_.push_back(auxVarAlg);
-          }
-
-	}
-	break;
-
       case GENERIC: 
         { 
           // default property evaluator
@@ -1709,12 +1626,12 @@ Realm::initialize_global_variables()
   // other variables created on the fly during Eqs registration
   const bool needInOutput = false;
   const bool needInRestart = true;
-  globalParameters_.set_param("timeStepNm1", 1.0, needInOutput, needInRestart);
-  globalParameters_.set_param("timeStepCount", 1, needInOutput, needInRestart);
+  globalParameters_->set_param("timeStepNm1", 1.0, needInOutput, needInRestart);
+  globalParameters_->set_param("timeStepCount", 1, needInOutput, needInRestart);
 
   // consider pushing this parameter to some higher level design
   if ( NULL != turbulenceAveragingPostProcessing_ )
-    globalParameters_.set_param("currentTimeFilter", 0.0, needInOutput, needInRestart);
+    globalParameters_->set_param("currentTimeFilter", 0.0, needInOutput, needInRestart);
 }
 
 //--------------------------------------------------------------------------
@@ -1748,178 +1665,8 @@ Realm::makeSureNodesHaveValidTopology()
   ThrowRequire(0 == nodes_vector.size());
 }
 
-//--------------------------------------------------------------------------
-//-------- pre_timestep_work -----------------------------------------------
-//--------------------------------------------------------------------------
-void
-Realm::pre_timestep_work()
+void Realm::pre_timestep_work_prolog()
 {
-
-  if ( solutionOptions_->activateUniformRefinement_) {
-    static stk::diag::Timer timerUniformRefine_("UniformRefinement", Simulation::rootTimer());
-    static stk::diag::Timer timerComputeGeom_("ComputeGeom", timerUniformRefine_);
-    static stk::diag::Timer timerCreateEdgesLocal_("CreateEdgesAfterAdapt", timerUniformRefine_);
-    static stk::diag::Timer timerDeleteEdgesLocal_("DeleteEdgesBeforeAdapt", timerUniformRefine_);
-    static stk::diag::Timer timerReInitLinSys_("ReInitLinSys", timerUniformRefine_);
-
-    stk::diag::TimeBlock tbTimerUR_(timerUniformRefine_);
-  
-    for (unsigned i = 0; i < solutionOptions_->refineAt_.size(); ++i) {
-      if ( solutionOptions_->refineAt_[i] == get_time_step_count() ||
-           (solutionOptions_->refineAt_[i] == 0 && get_time_step_count() == 1) ) {
-
-        NaluEnv::self().naluOutputP0() << "UniformRefinement: at step= " << get_time_step_count() << std::endl;
-
-        if (realmUsesEdges_ ) {
-          stk::diag::TimeBlock tbDeleteEdges_(timerDeleteEdgesLocal_);
-          delete_edges();
-        }
-
-#if defined (NALU_USES_PERCEPT)
-        adapter_->do_uniform_refine();
-#endif
-
-        std::vector<size_t> counts;
-        stk::mesh::comm_mesh_counts( *bulkData_ , counts);
-
-        NaluEnv::self().naluOutputP0() << "UniformRefine: after uniform refine, mesh has  "
-                        << counts[0] << " nodes, "
-                        << counts[1] << " edges, "
-                        << counts[2] << " faces, "
-                        << counts[3] << " elements" << std::endl;
-
-        //call this temporary function to correct the part membership of any nodes that
-        //are not in the node-topology part. Remove this function as soon as percept/adapt
-        //is altered to make sure that all newly-created nodes are placed in that part.
-        makeSureNodesHaveValidTopology();
-
-        if (realmUsesEdges_ ) {
-          stk::diag::TimeBlock tbCreateEdges_(timerCreateEdgesLocal_);
-          create_edges();
-        }
-
-        {
-          stk::diag::TimeBlock tbComputeGeom_(timerComputeGeom_);
-          compute_geometry();
-        }
-
-        // now re-initialize linear system
-        stk::diag::TimeBlock tbReInit_(timerReInitLinSys_);
-        equationSystems_.reinitialize_linear_system();
-        
-      }
-    }
-  }
-
-  // compute error indicator
-  if ( solutionOptions_->activateAdaptivity_) {
-    static stk::diag::Timer timerAdaptRealm_("AdaptRealm", Simulation::rootTimer());
-    static stk::diag::Timer timerComputeGeom_("ComputeGeom", timerAdaptRealm_);
-    static stk::diag::Timer timerCreateEdgesLocal_("CreateEdgesAfterAdapt", timerAdaptRealm_);
-    static stk::diag::Timer timerDeleteEdgesLocal_("DeleteEdgesBeforeAdapt", timerAdaptRealm_);
-    static stk::diag::Timer timerReInitLinSys_("ReInitLinSys", timerAdaptRealm_);
-
-    stk::diag::TimeBlock tbTimerAdapt_(timerAdaptRealm_);
-    double time = -NaluEnv::self().nalu_time();
-    if ( process_adaptivity() ) {
-
-#if defined (NALU_USES_PERCEPT)
-      // mesh counts
-      std::vector<size_t> counts;
-      stk::mesh::comm_mesh_counts( *bulkData_ , counts);
-      if (0 == numInitialElements_) {
-        numInitialElements_ = counts[3];
-      }
-
-      errorIndicatorAlgDriver_->execute();
-
-      if (solutionOptions_->useAdapter_ && solutionOptions_->maxRefinementLevel_)
-        {
-          NaluEnv::self().naluOutputP0() << "Adapt: running adapter..." << std::endl;
-          NaluEnv::self().naluOutputP0() << "Adapt: before adapt, mesh has  "
-                          << counts[0] << " nodes, "
-                          << counts[1] << " edges, "
-                          << counts[2] << " faces, "
-                          << counts[3] << " elements" << std::endl;
-
-#if USE_NALU_PERFORMANCE_TESTING_CALLGRIND
-          CALLGRIND_START_INSTRUMENTATION;
-          CALLGRIND_TOGGLE_COLLECT;
-#endif
-
-          // delete edges first
-          if (realmUsesEdges_ ) {
-            stk::diag::TimeBlock tbDeleteEdges_(timerDeleteEdgesLocal_);
-            delete_edges();
-          }
-
-          adapter_->do_adapt(ADAPT_REFINE);
-
-          counts.resize(0);
-          stk::mesh::comm_mesh_counts( *bulkData_ , counts);
-
-          NaluEnv::self().naluOutputP0() << "Adapt: after refine, mesh has  "
-                          << counts[0] << " nodes, "
-                          << counts[1] << " edges, "
-                          << counts[2] << " faces, "
-                          << counts[3] << " elements" << std::endl;
-
-          // refinement destroys/recreates some elements, so we lose initial marking on some elements,
-          //   thus, re-run the error indicator/marker before the unrefine stage.
-          errorIndicatorAlgDriver_->execute();
-
-          adapter_->do_adapt(ADAPT_UNREFINE);
-
-          //call this temporary function to correct the part membership of any nodes that
-          //are not in the node-topology part. Remove this function as soon as percept/adapt
-          //is altered to make sure that all newly-created nodes are placed in that part.
-          makeSureNodesHaveValidTopology();
-
-#if USE_NALU_PERFORMANCE_TESTING_CALLGRIND
-  CALLGRIND_TOGGLE_COLLECT;
-  CALLGRIND_STOP_INSTRUMENTATION;
-#endif
-
-          counts.resize(0);
-          stk::mesh::comm_mesh_counts( *bulkData_ , counts);
-
-          NaluEnv::self().naluOutputP0() << "Adapt: after unrefine, mesh has  "
-                          << counts[0] << " nodes, "
-                          << counts[1] << " edges, "
-                          << counts[2] << " faces, "
-                          << counts[3] << " elements" << std::endl;
-
-
-          if (realmUsesEdges_ ) {
-            stk::diag::TimeBlock tbCreateEdges_(timerCreateEdgesLocal_);
-            create_edges();
-          }
-
-          {
-            stk::diag::TimeBlock tbComputeGeom_(timerComputeGeom_);
-            compute_geometry();
-          }
-
-          // now re-initialize linear system
-          stk::diag::TimeBlock tbReInit_(timerReInitLinSys_);
-          equationSystems_.reinitialize_linear_system();
-          
-          // process speciality methods for adaptivity
-          NaluEnv::self().naluOutputP0() << std::endl;
-          NaluEnv::self().naluOutputP0() << "Post Adapt Work:" << std::endl;
-          NaluEnv::self().naluOutputP0() <<"===========================" << std::endl;
-          equationSystems_.post_adapt_work();
-          NaluEnv::self().naluOutputP0() <<"===========================" << std::endl;
-          NaluEnv::self().naluOutputP0() << std::endl;
-
-          outputInfo_->meshAdapted_ = true;
-        }
-#endif
-    }
-    time += NaluEnv::self().nalu_time();
-    timerAdapt_ += time;
-  }
-
   // check for mesh motion
   if ( solutionOptions_->meshMotion_ ) {
 
@@ -1932,12 +1679,13 @@ Realm::pre_timestep_work()
     // and non-conformal algorithm
     if ( hasNonConformal_ )
       initialize_non_conformal();
+  }
+}
 
-    // and overset algorithm
-    if ( hasOverset_ )
-      initialize_overset();
-
-    // Reset the ngp::Mesh instance
+void Realm::pre_timestep_work_epilog()
+{
+  if ( solutionOptions_->meshMotion_ ) {
+    // Reset the stk::mesh::NgpMesh instance
     meshInfo_.reset(new typename Realm::NgpMeshInfo(*bulkData_));
 
     // now re-initialize linear system
@@ -2014,11 +1762,13 @@ Realm::advance_time_step()
   // compute velocity relative to mesh
   compute_vrtm();
 
-  // check for actuator line; assemble the source terms for this time step
-  if ( NULL != actuator_ ) {
-    actuator_->execute();
+  // check for  actuator; assemble the source terms for this step
+  if (actuatorModel_) {
+    const double start_time = NaluEnv::self().nalu_time();
+    actuatorModel_->execute(timerActuator_);
+    const double end_time = NaluEnv::self().nalu_time();
+    timerActuator_ += end_time - start_time;
   }
-
   // Check for ABL forcing; estimate source terms for this time step
   if ( NULL != ablForcingAlg_) {
     ablForcingAlg_->execute();
@@ -2113,13 +1863,6 @@ Realm::create_mesh()
   if (autoDecompType_ != "None") 
     ioBroker_->property_add(Ioss::Property("DECOMPOSITION_METHOD", autoDecompType_));
   
-  // for adaptivity we need an additional rank to store parent/child relations
-  if (solutionOptions_->useAdapter_ || solutionOptions_->activateUniformRefinement_) {
-    std::vector<std::string> entity_rank_names = stk::mesh::entity_rank_names();
-    entity_rank_names.push_back("FAMILY_TREE");
-    ioBroker_->set_rank_name_vector(entity_rank_names);
-  }
-
   // Initialize meta data (from exodus file); can possibly be a restart file..
   inputMeshIdx_ = ioBroker_->add_mesh_database( 
    inputDBName_, restarted_simulation() ? stk::io::READ_RESTART : stk::io::READ_MESH );
@@ -2148,8 +1891,9 @@ Realm::create_mesh()
 void
 Realm::create_output_mesh()
 {
+  sideWriters_->construct_writers(bulk_data());
   // exodus output file creation
-  if (outputInfo_->hasOutputBlock_ ) {
+  if (outputInfo_->hasOutputBlock_) {
 
     double start_time = NaluEnv::self().nalu_time();
     NaluEnv::self().naluOutputP0() << "Realm::create_output_mesh(): Begin" << std::endl;
@@ -2157,23 +1901,10 @@ Realm::create_output_mesh()
     if (outputInfo_->outputFreq_ == 0)
       return;
 
-    // if we are adapting, skip when no I/O happens before first adapt step
-    if (solutionOptions_->useAdapter_ && outputInfo_->meshAdapted_ == false &&
-        solutionOptions_->adaptivityFrequency_ <= outputInfo_->outputFreq_) {
-      return;
-    }
-
     std::string oname =  outputInfo_->outputDBName_ ;
-    if (solutionOptions_->useAdapter_ && solutionOptions_->maxRefinementLevel_) {
-      static int fileid = 0;
-      std::ostringstream fileid_ss;
-      fileid_ss << std::setfill('0') << std::setw(4) << (fileid+1);
-      if (fileid++ > 0) oname += "-s" + fileid_ss.str();
-    }
-
-
     if(!outputInfo_->catalystFileName_.empty()||
        !outputInfo_->paraviewScriptName_.empty()) {
+#ifdef NALU_USES_CATALYST
       outputInfo_->outputPropertyManager_->add(Ioss::Property("CATALYST_BLOCK_PARSE_JSON_STRING",
                                                outputInfo_->catalystParseJson_));
       std::string input_deck_name = "%B";
@@ -2186,24 +1917,13 @@ Realm::create_output_mesh()
       outputInfo_->outputPropertyManager_->add(Ioss::Property("CATALYST_CREATE_SIDE_SETS", 1));
       
       resultsFileIndex_ = ioBroker_->create_output_mesh( oname, stk::io::WRITE_RESULTS, *outputInfo_->outputPropertyManager_, "catalyst" );
+#else
+      throw std::runtime_error("Nalu-Wind not built with Catalyst support");
+#endif
    }
    else {
       resultsFileIndex_ = ioBroker_->create_output_mesh( oname, stk::io::WRITE_RESULTS, *outputInfo_->outputPropertyManager_);
    }
-
-#if defined (NALU_USES_PERCEPT)
-
-  if (solutionOptions_->useAdapter_ && outputInfo_->meshAdapted_) {
-    stk::mesh::Selector selectRule =
-      metaData_->locally_owned_part() |
-      metaData_->globally_shared_part();
-
-    activePartForIO_ = Teuchos::rcp(new stk::mesh::Selector(percept::make_active_part_selector(*metaData_, selectRule)));
-
-    ioBroker_->set_subset_selector(resultsFileIndex_, activePartForIO_);
-  }
-
-#endif
 
     // Tell stk_io how to output element block nodal fields:
     // if 'true' passed to function, then output them as nodeset fields;
@@ -2226,9 +1946,6 @@ Realm::create_output_mesh()
         ioBroker_->add_field(resultsFileIndex_, *theField, varName);
       }
     }
-
-    // reset this flag
-    outputInfo_->meshAdapted_ = false;
 
     // set mesh creation
     const double end_time = NaluEnv::self().nalu_time();
@@ -2270,13 +1987,13 @@ Realm::create_restart_mesh()
     }
 
     // now global params
-    stk::util::ParameterMapType::const_iterator i = globalParameters_.begin();
-    stk::util::ParameterMapType::const_iterator iend = globalParameters_.end();
+    stk::util::ParameterMapType::const_iterator i = globalParameters_->begin();
+    stk::util::ParameterMapType::const_iterator iend = globalParameters_->end();
     for (; i != iend; ++i) {
       std::string parameterName = (*i).first;
       stk::util::Parameter parameter = (*i).second;
       if(parameter.toRestartFile) {
-        ioBroker_->add_global(restartFileIndex_, parameterName, parameter.value, parameter.type);
+        ioBroker_->add_global(restartFileIndex_, parameterName, parameter);
       }
     }
 
@@ -2359,12 +2076,7 @@ Realm::create_edges()
   stk::diag::TimeBlock tbCreateEdges_(timerCE_);
 
   double start_time = NaluEnv::self().nalu_time();
-  if (solutionOptions_->useAdapter_ && solutionOptions_->maxRefinementLevel_ > 0 ) {
-    stk::mesh::create_edges(*bulkData_, adapterSelector_[stk::topology::ELEMENT_RANK], edgesPart_);
-  }
-  else {
-    stk::mesh::create_edges(*bulkData_, metaData_->universal_part(), edgesPart_);
-  }
+  stk::mesh::create_edges(*bulkData_, metaData_->universal_part(), edgesPart_);
   double stop_time = NaluEnv::self().nalu_time();
 
   // timer close-out
@@ -2480,8 +2192,6 @@ Realm::delete_edges()
 				       << std::endl;
 
         stk::mesh::EntityRank topRank = stk::topology::ELEMENT_RANK;
-        if (solutionOptions_->useAdapter_ && solutionOptions_->maxRefinementLevel_ > 0)
-          ++topRank;
         for (stk::mesh::EntityRank irank = stk::topology::EDGE_RANK; irank <= topRank; ++irank) {
           unsigned nc = bulkData_->num_connectivity(edges[ii], irank);
           NaluEnv::self().naluOutputP0() << "P[" << bulkData_->parallel_rank() << "] deleting edge nc[" << irank << "]= " << nc
@@ -2522,7 +2232,8 @@ Realm::initialize_non_conformal()
 void
 Realm::initialize_overset()
 {
-  oversetManager_->initialize(equationSystems_.all_systems_decoupled());
+  if (hasOverset_ && !isExternalOverset_)
+    oversetManager_->execute(equationSystems_.all_systems_decoupled());
 }
 
 //--------------------------------------------------------------------------
@@ -2535,14 +2246,12 @@ Realm::initialize_post_processing_algorithms()
   if ( NULL != dataProbePostProcessing_ )
     dataProbePostProcessing_->initialize();
 
-  // check for actuator... probably a better place for this
-  if ( NULL != actuator_ ) {
-    actuator_->initialize();
-  }
-
   if ( NULL != ablForcingAlg_) {
     ablForcingAlg_->initialize();
   }
+
+  if (actuatorModel_)
+    actuatorModel_->init(bulk_data());
 }
 
 //--------------------------------------------------------------------------
@@ -2551,7 +2260,7 @@ Realm::initialize_post_processing_algorithms()
 std::string
 Realm::get_coordinates_name()
 {
-  return ( (solutionOptions_->meshMotion_ | solutionOptions_->meshDeformation_ | solutionOptions_->externalMeshDeformation_) 
+  return ( (solutionOptions_->meshMotion_ | solutionOptions_->externalMeshDeformation_)
            ? "current_coordinates" : "coordinates");
 }
 
@@ -2570,7 +2279,12 @@ Realm::has_mesh_motion() const
 bool
 Realm::has_mesh_deformation() const
 {
-  return solutionOptions_->externalMeshDeformation_ | solutionOptions_->meshDeformation_;
+    if (meshMotionAlg_) {
+       return meshMotionAlg_->is_deforming() |
+              solutionOptions_->externalMeshDeformation_;
+    }
+    else
+        return solutionOptions_->externalMeshDeformation_;
 }
 
 //--------------------------------------------------------------------------
@@ -2660,7 +2374,7 @@ Realm::compute_vrtm(const std::string& velName)
   if (!solutionOptions_->meshMotion_ &&
       !solutionOptions_->externalMeshDeformation_) return;
 
-  using Traits = nalu_ngp::NGPMeshTraits<ngp::Mesh>;
+  using Traits = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
   using MeshIndex = Traits::MeshIndex;
 
   const int nDim = metaData_->spatial_dimension();
@@ -2673,8 +2387,11 @@ Realm::compute_vrtm(const std::string& velName)
   auto vrtm = fieldMgr.get_field<double>(
     get_field_ordinal(*metaData_, velName + "_rtm"));
 
+  auto* vrtm_field = metaData_->get_field<VectorFieldType>(
+    stk::topology::NODE_RANK, velName + "_rtm");
   const stk::mesh::Selector sel = (
-    metaData_->locally_owned_part() | metaData_->globally_shared_part());
+    metaData_->locally_owned_part() | metaData_->globally_shared_part()) &
+    stk::mesh::selectField(*vrtm_field);
   nalu_ngp::run_entity_algorithm(
     "compute_vrtm",
     ngpMesh, stk::topology::NODE_RANK, sel,
@@ -2692,7 +2409,6 @@ Realm::compute_vrtm(const std::string& velName)
 void
 Realm::init_current_coordinates()
 {
-
   const int nDim = metaData_->spatial_dimension();
 
   VectorFieldType *modelCoords = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
@@ -2700,7 +2416,8 @@ Realm::init_current_coordinates()
   VectorFieldType *displacement = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "mesh_displacement");
 
   stk::mesh::Selector s_all_nodes
-    = (metaData_->locally_owned_part() | metaData_->globally_shared_part());
+    = (metaData_->locally_owned_part() | metaData_->globally_shared_part()) &
+    stk::mesh::selectField(*currentCoords);
 
   stk::mesh::BucketVector const& node_buckets = bulkData_->get_buckets( stk::topology::NODE_RANK, s_all_nodes );
   for ( stk::mesh::BucketVector::const_iterator ib = node_buckets.begin() ;
@@ -2718,6 +2435,13 @@ Realm::init_current_coordinates()
       }
     }
   }
+
+  // sync fields to device
+  currentCoords->modify_on_host();
+  currentCoords->sync_to_device();
+
+  displacement->modify_on_host();
+  displacement->sync_to_device();
 }
 
 //--------------------------------------------------------------------------
@@ -2781,13 +2505,16 @@ Realm::register_nodal_fields(
   stk::mesh::put_field_on_mesh(elemVol, *part, 1, nullptr);
 
   if (realmUsesEdges_) {
-    auto& edgeAreaVec = metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "edge_area_vector");
-    stk::mesh::put_field_on_mesh(edgeAreaVec, *part, metaData_->spatial_dimension(), nullptr);
+    auto& edgeAreaVec = metaData_->declare_field<VectorFieldType>(
+      stk::topology::EDGE_RANK, "edge_area_vector");
+    stk::mesh::put_field_on_mesh(
+      edgeAreaVec, *part, metaData_->spatial_dimension(), nullptr);
   }
 
   // mesh motion/deformation is high level
-  if ( solutionOptions_->meshMotion_ || solutionOptions_->externalMeshDeformation_) {
-    VectorFieldType *displacement = &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "mesh_displacement"));
+  // clang-format off
+  if ( does_mesh_move()) {
+    VectorFieldType *displacement = &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "mesh_displacement",numVolStates));
     stk::mesh::put_field_on_mesh(*displacement, *part, nDim, nullptr);
     VectorFieldType *currentCoords = &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "current_coordinates"));
     stk::mesh::put_field_on_mesh(*currentCoords, *part, nDim, nullptr);
@@ -2795,13 +2522,12 @@ Realm::register_nodal_fields(
     stk::mesh::put_field_on_mesh(*meshVelocity, *part, nDim, nullptr);
     VectorFieldType *velocityRTM = &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "velocity_rtm"));
     stk::mesh::put_field_on_mesh(*velocityRTM, *part, nDim, nullptr);
-
-    // only external mesh deformation requires dvi/dxj (for GCL)
-    if ( solutionOptions_->externalMeshDeformation_) {
+    if(has_mesh_deformation()){
       ScalarFieldType *divV = &(metaData_->declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "div_mesh_velocity"));
       stk::mesh::put_field_on_mesh(*divV, *part, nullptr);
     }
   }
+  // clang-format on
 
   ScalarIntFieldType& iblank = metaData_->declare_field<ScalarIntFieldType>(
     stk::topology::NODE_RANK, "iblank");
@@ -2815,6 +2541,10 @@ void
 Realm::register_interior_algorithm(
   stk::mesh::Part *part)
 {
+  if (matrixFree_) {
+    return;
+  }
+
   const AlgorithmType algType = INTERIOR;
   geometryAlgDriver_->register_elem_algorithm<GeometryInteriorAlg>(
       algType, part, "geometry");
@@ -2831,6 +2561,9 @@ Realm::register_wall_bc(
   stk::mesh::Part *part,
   const stk::topology &theTopo)
 {
+  if (matrixFree_) {
+    return;
+  }
 
   //====================================================
   // Register face (boundary condition) data
@@ -2862,6 +2595,9 @@ Realm::register_inflow_bc(
   stk::mesh::Part *part,
   const stk::topology &theTopo)
 {
+  if (matrixFree_) {
+    return;
+  }
 
   //====================================================
   // Register face (boundary condition) data
@@ -2893,6 +2629,9 @@ Realm::register_open_bc(
   stk::mesh::Part *part,
   const stk::topology &theTopo)
 {
+  if (matrixFree_) {
+    return;
+  }
 
   //====================================================
   // Register face (boundary condition) data
@@ -2925,7 +2664,9 @@ Realm::register_symmetry_bc(
   stk::mesh::Part *part,
   const stk::topology &theTopo)
 {
-
+  if (matrixFree_) {
+    return;
+  }
   //====================================================
   // Register face (boundary condition) data
   //====================================================
@@ -3021,6 +2762,7 @@ Realm::register_non_conformal_bc(
   stk::mesh::Part *part,
   const stk::topology &theTopo)
 {
+  ThrowRequire(!matrixFree_);
 
   // push back the part for book keeping and, later, skin mesh
   bcPartVec_.push_back(part);
@@ -3040,6 +2782,30 @@ Realm::register_non_conformal_bc(
     algType, part, "geometry");
 }
 
+void Realm::register_overset_bc()
+{
+  for (auto* superPart: oversetBCPartVec_)
+    for (auto* part: superPart->subsets()) {
+      const auto topo = part->topology();
+      const int nDim = metaData_->spatial_dimension();
+      // register fields
+      MasterElement* meFC = MasterElementRepo::get_surface_master_element(topo);
+      const int numScsIp = meFC->num_integration_points();
+
+      // exposed area vector
+      GenericFieldType* exposedAreaVec_ =
+        &(metaData_->declare_field<GenericFieldType>(
+          static_cast<stk::topology::rank_t>(metaData_->side_rank()),
+          "exposed_area_vector"));
+      stk::mesh::put_field_on_mesh(
+        *exposedAreaVec_, *part, nDim * numScsIp, nullptr);
+
+      const AlgorithmType algType = BOUNDARY;
+      geometryAlgDriver_->register_face_algorithm<GeometryBoundaryAlg>(
+        algType, part, "geometry");
+    }
+}
+
 //--------------------------------------------------------------------------
 //-------- setup_overset_bc ------------------------------------------------
 //--------------------------------------------------------------------------
@@ -3047,29 +2813,34 @@ void
 Realm::setup_overset_bc(
   const OversetBoundaryConditionData &oversetBCData)
 {
-  // setting flag for linear system setup (may have been set via earlier "query")
+  // setting flag for linear system setup (may have been set via earlier
+  // "query")
   hasOverset_ = true;
-  
+
   // create manager while providing overset data
-  if ( NULL == oversetManager_ ) {
+  if (NULL == oversetManager_) {
     switch (oversetBCData.oversetConnectivityType_) {
     case OversetBoundaryConditionData::TPL_TIOGA:
 #ifdef NALU_USES_TIOGA
       oversetManager_ = new OversetManagerTIOGA(*this, oversetBCData.userData_);
-      NaluEnv::self().naluOutputP0()
-        << "Realm::setup_overset_bc:: Selecting TIOGA TPL for overset connectivity"
-        << std::endl;
+      NaluEnv::self().naluOutputP0() << "Realm::setup_overset_bc:: Selecting "
+                                        "TIOGA TPL for overset connectivity"
+                                     << std::endl;
       break;
 #else
-      // should not get here... we should have thrown error in input file processing stage
-      throw std::runtime_error("TIOGA TPL support not enabled during compilation phase");
+      // should not get here... we should have thrown error in input file
+      // processing stage
+      throw std::runtime_error(
+        "TIOGA TPL support not enabled during compilation phase");
 #endif
 
-    case OversetBoundaryConditionData::OVERSET_NONE:
     default:
       throw std::runtime_error("Invalid setting for overset connectivity");
     }
-  }   
+  }
+
+  oversetManager_->setup();
+  register_overset_bc();
 }
 
 //--------------------------------------------------------------------------
@@ -3101,13 +2872,14 @@ Realm::periodic_field_max(
 void
 Realm::periodic_delta_solution_update(
   stk::mesh::FieldBase *theField,
-  const unsigned &sizeOfField) const
+  const unsigned &sizeOfField,
+  const bool &doCommunication) const
 {
   const bool bypassFieldCheck = true;
   const bool addSlaves = false;
   const bool setSlaves = true;
   periodicManager_->ngp_apply_constraints(
-    theField, sizeOfField, bypassFieldCheck, addSlaves, setSlaves);
+    theField, sizeOfField, bypassFieldCheck, addSlaves, setSlaves, doCommunication);
 }
 
 //--------------------------------------------------------------------------
@@ -3133,17 +2905,20 @@ Realm::get_slave_part_vector()
     return emptyPartVector_;
 }
 
-
-//--------------------------------------------------------------------------
-//-------- overset_field_update -------------------------------------------
-//--------------------------------------------------------------------------
 void
-Realm::overset_orphan_node_field_update(
-  stk::mesh::FieldBase *theField,
-  const unsigned sizeRow,
-  const unsigned sizeCol)
+Realm::overset_field_update(
+  stk::mesh::FieldBase* field,
+  const unsigned nRows,
+  const unsigned nCols,
+  const bool doFinalSyncToDevice)
 {
-  oversetManager_->overset_update_field(theField, sizeRow, sizeCol);
+  if (!hasOverset_ || isExternalOverset_) return;
+
+  const double timeA = NaluEnv::self().nalu_time();
+  oversetManager_->overset_update_field(
+    field, nRows, nCols, doFinalSyncToDevice);
+  const double timeB = NaluEnv::self().nalu_time();
+  oversetManager_->timerFieldUpdate_ += (timeB - timeA);
 }
 
 //--------------------------------------------------------------------------
@@ -3153,17 +2928,17 @@ void
 Realm::provide_output()
 {
   stk::diag::TimeBlock mesh_output_timeblock(Simulation::outputTimer());
+  const double start_time = NaluEnv::self().nalu_time();
+  const double currentTime = get_current_time();
+  const int timeStepCount = get_time_step_count();
+  sideWriters_->write_sides(timeStepCount, currentTime);
 
   if ( outputInfo_->hasOutputBlock_ ) {
 
     if (outputInfo_->outputFreq_ == 0)
       return;
 
-    const double start_time = NaluEnv::self().nalu_time();
-
     // process output via io
-    const double currentTime = get_current_time();
-    const int timeStepCount = get_time_step_count();
     const int modStep = timeStepCount - outputInfo_->outputStart_;
 
     // check for elapsed WALL time threshold
@@ -3194,16 +2969,27 @@ Realm::provide_output()
 
     if ( isOutput ) {
       NaluEnv::self().naluOutputP0() << "Realm shall provide output files at : currentTime/timeStepCount: "
-                                     << currentTime << "/" <<  timeStepCount << " (" << name_ << ")" << std::endl;      
-      // when adaptivity has occurred, re-create the output mesh file
-      if (outputInfo_->meshAdapted_)
-        create_output_mesh();
+                                     << currentTime << "/" <<  timeStepCount << " (" << name_ << ")" << std::endl;
 
       // not set up for globals
       if (!doPromotion_) {
+        // Sync fields to host on NGP builds before output
+        for (auto* fld: metaData_->get_fields()) {
+          fld->sync_to_host();
+        }
+
         ioBroker_->process_output_request(resultsFileIndex_, currentTime);
       }
       else {
+        for (auto& stringFieldPair : promotionIO_->get_output_fields()) {
+          auto& field = *stringFieldPair.second;
+          if (field.type_is<double>()) {
+            stk::mesh::get_updated_ngp_field<double>(field).sync_to_host();
+          }
+          else if (field.type_is<int>()) {
+            stk::mesh::get_updated_ngp_field<int>(field).sync_to_host();
+          }
+        }
         promotionIO_->write_database_data(currentTime);
       }
       equationSystems_.provide_output();
@@ -3269,21 +3055,21 @@ Realm::provide_restart_output()
 
       // push global variables for time step
       const double timeStepNm1 = timeIntegrator_->get_time_step();
-      globalParameters_.set_value("timeStepNm1", timeStepNm1);
-      globalParameters_.set_value("timeStepCount", timeStepCount);
+      globalParameters_->set_value("timeStepNm1", timeStepNm1);
+      globalParameters_->set_value("timeStepCount", timeStepCount);
 
       if ( NULL != turbulenceAveragingPostProcessing_ ) {
-        globalParameters_.set_value("currentTimeFilter", turbulenceAveragingPostProcessing_->currentTimeFilter_ );
+        globalParameters_->set_value("currentTimeFilter", turbulenceAveragingPostProcessing_->currentTimeFilter_ );
       }
 
-      stk::util::ParameterMapType::const_iterator i = globalParameters_.begin();
-      stk::util::ParameterMapType::const_iterator iend = globalParameters_.end();
+      stk::util::ParameterMapType::const_iterator i = globalParameters_->begin();
+      stk::util::ParameterMapType::const_iterator iend = globalParameters_->end();
       for (; i != iend; ++i)
       {
         std::string parameterName = (*i).first;
         stk::util::Parameter parameter = (*i).second;
         if ( parameter.toRestartFile ) {
-          ioBroker_->write_global(restartFileIndex_, parameterName,  parameter.value, parameter.type);
+          ioBroker_->write_global(restartFileIndex_, parameterName,  parameter);
         }
       }
 
@@ -3374,6 +3160,24 @@ Realm::populate_restart(
     const double restartTime = outputInfo_->restartTime_;
     std::vector<stk::io::MeshField> missingFields;
     foundRestartTime = ioBroker_->read_defined_input_fields(restartTime, &missingFields);
+
+    {
+      for (const auto& fname: outputInfo_->restartFieldNameSet_) {
+        auto* field = stk::mesh::get_field_by_name(
+            fname, *metaData_);
+        if (field == nullptr) continue;
+
+        const unsigned numStates = field->number_of_states();
+        for (unsigned i=0; i < numStates; ++i) {
+          auto* fld = field->field_state(
+              static_cast<stk::mesh::FieldState>(i));
+          fld->modify_on_host();
+          ngp_field_manager().get_field<double>(fld->mesh_meta_data_ordinal());
+          fld->sync_to_device();
+        }
+      }
+    }
+
     if ( missingFields.size() > 0 ){
       for ( size_t k = 0; k < missingFields.size(); ++k) {
         NaluEnv::self().naluOutputP0() << "WARNING: Restart value for Field "
@@ -3496,7 +3300,8 @@ Realm::set_hypre_global_id()
   int nprocs = bulkData_->parallel_size();
   int iproc = bulkData_->parallel_rank();
   std::vector<int> nodesPerProc(nprocs);
-  std::vector<stk::mesh::EntityId> hypreOffsets(nprocs+1);
+  //std::vector<stk::mesh::EntityId> hypreOffsets(nprocs+1);
+  hypreOffsets_.resize(nprocs+1);
 
   // 1. Determine the number of nodes per partition and determine appropriate
   // offsets on each MPI rank.
@@ -3505,15 +3310,15 @@ Realm::set_hypre_global_id()
   MPI_Allgather(&num_nodes, 1, MPI_INT, nodesPerProc.data(), 1, MPI_INT,
                 bulkData_->parallel());
 
-  hypreOffsets[0] = 0;
+  hypreOffsets_[0] = 0;
   for (int i=1; i <= nprocs; i++)
-    hypreOffsets[i] = hypreOffsets[i-1] + nodesPerProc[i-1];
+    hypreOffsets_[i] = hypreOffsets_[i-1] + nodesPerProc[i-1];
 
   // These are set up for NDOF=1, the actual lower/upper extents will be
   // finalized in HypreLinearSystem class based on the equation being solved.
-  hypreILower_ = hypreOffsets[iproc];
-  hypreIUpper_ = hypreOffsets[iproc+1];
-  hypreNumNodes_ = hypreOffsets[nprocs];
+  hypreILower_ = hypreOffsets_[iproc];
+  hypreIUpper_ = hypreOffsets_[iproc+1];
+  hypreNumNodes_ = hypreOffsets_[nprocs];
 
   // 2. Sort the local STK IDs so that we retain a 1-1 mapping as much as possible
   size_t ii=0;
@@ -3740,17 +3545,6 @@ Realm::dump_simulation_time()
   NaluEnv::self().naluOutputP0() << "            props --  " << " \tavg: " << g_total_time[3]/double(nprocs)
                   << " \tmin: " << g_min_time[3] << " \tmax: " << g_max_time[3] << std::endl;
 
-  if (solutionOptions_->useAdapter_ && solutionOptions_->maxRefinementLevel_) {
-    double g_total_adapt = 0.0, g_min_adapt = 0.0, g_max_adapt = 0.0;
-    stk::all_reduce_min(NaluEnv::self().parallel_comm(), &timerAdapt_, &g_min_adapt, 1);
-    stk::all_reduce_max(NaluEnv::self().parallel_comm(), &timerAdapt_, &g_max_adapt, 1);
-    stk::all_reduce_sum(NaluEnv::self().parallel_comm(), &timerAdapt_, &g_total_adapt, 1);
-
-    NaluEnv::self().naluOutputP0() << "Timing for adaptivity:         " << std::endl;
-    NaluEnv::self().naluOutputP0() << "            adapt --  " << " \tavg: " << g_total_adapt/double(nprocs)
-                    << " \tmin: " << g_min_adapt << " \tmax: " << g_max_adapt << std::endl;
-  }
-
   // now edge creation; if applicable
   if ( realmUsesEdges_ ) {
     double g_total_edge = 0.0, g_min_edge = 0.0, g_max_edge = 0.0;
@@ -3777,7 +3571,7 @@ Realm::dump_simulation_time()
   }
 
   // nonconformal or overset
-  if ( has_non_matching_boundary_face_alg() ) {
+  if ( hasNonConformal_ ) {
     double g_totalNonconformal = 0.0, g_minNonconformal= 0.0, g_maxNonconformal = 0.0;
     stk::all_reduce_min(NaluEnv::self().parallel_comm(), &timerNonconformal_, &g_minNonconformal, 1);
     stk::all_reduce_max(NaluEnv::self().parallel_comm(), &timerNonconformal_, &g_maxNonconformal, 1);
@@ -3786,6 +3580,20 @@ Realm::dump_simulation_time()
     NaluEnv::self().naluOutputP0() << "Timing for Nonconformal: " << std::endl;
     NaluEnv::self().naluOutputP0() << "  nonconformal bc --  " << " \tavg: " << g_totalNonconformal/double(nprocs)
                                    << " \tmin: " << g_minNonconformal << " \tmax: " << g_maxNonconformal << std::endl;
+  }
+
+  if (hasOverset_) {
+    double connTime[2] = {oversetManager_->timerConnectivity_, oversetManager_->timerFieldUpdate_};
+    double totTime[2], minTime[2], maxTime[2];
+    stk::all_reduce_sum(NaluEnv::self().parallel_comm(), connTime, totTime, 2);
+    stk::all_reduce_min(NaluEnv::self().parallel_comm(), connTime, minTime, 2);
+    stk::all_reduce_max(NaluEnv::self().parallel_comm(), connTime, maxTime, 2);
+    NaluEnv::self().naluOutputP0()
+      << "Timing for Overset:" << std::endl
+      << "     connectivity --  \tavg: " << totTime[0] / double(nprocs)
+      << " \tmin: " << minTime[0] << " \tmax: " << maxTime[0] << std::endl
+      << "     field update --  \tavg: " << totTime[1] / double(nprocs)
+      << " \tmin: " << minTime[1] << " \tmax: " << maxTime[1] << std::endl;
   }
 
   // transfer
@@ -3825,6 +3633,17 @@ Realm::dump_simulation_time()
     NaluEnv::self().naluOutputP0() << "Timing for promote_mesh :    " << std::endl;
     NaluEnv::self().naluOutputP0() << "        promote_mesh --  " << " \tavg: " << g_totalPromote/double(nprocs)
                                          << " \tmin: " << g_minPromote << " \tmax: " << g_maxPromote << std::endl;
+  }
+
+  if (timerActuator_ > 0) {
+    double g_totalActuator = 0.0, g_minActuator= 0.0, g_maxActuator = 0.0;
+    stk::all_reduce_min(NaluEnv::self().parallel_comm(), &timerActuator_, &g_minActuator, 1);
+    stk::all_reduce_max(NaluEnv::self().parallel_comm(), &timerActuator_, &g_maxActuator, 1);
+    stk::all_reduce_sum(NaluEnv::self().parallel_comm(), &timerActuator_, &g_totalActuator, 1);
+
+    NaluEnv::self().naluOutputP0() << "Timing for actuator :    " << std::endl;
+    NaluEnv::self().naluOutputP0() << "        actuator::execute --  " << " \tavg: " << g_totalActuator/double(nprocs)
+                                         << " \tmin: " << g_minActuator << " \tmax: " << g_maxActuator<< std::endl;
   }
 
   // consolidated sort
@@ -4341,6 +4160,8 @@ Realm::process_external_data_transfer()
   std::vector<Transfer *>::iterator ii;
   for( ii=externalDataTransferVec_.begin(); ii!=externalDataTransferVec_.end(); ++ii )
     (*ii)->execute();
+
+  equationSystems_.post_external_data_transfer_work();
   timeXfer += NaluEnv::self().nalu_time();
   timerTransferExecute_ += timeXfer;
 }
@@ -4478,7 +4299,7 @@ Realm::create_promoted_output_mesh()
     }
 
     auto* coords = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
-    promotionIO_ = make_unique<PromotedElementIO>(
+    promotionIO_ = std::make_unique<PromotedElementIO>(
       promotionOrder_,
       *metaData_,
       *bulkData_,
@@ -4511,6 +4332,7 @@ Realm::physics_part_name(std::string name) const
 std::vector<std::string>
 Realm::physics_part_names(std::vector<std::string> names) const
 {
+  names = handle_all_element_part_alias(names);
   if (doPromotion_) {
     std::transform(names.begin(), names.end(), names.begin(), [&](const std::string& name) {
       return super_element_part_name(name);
@@ -4626,7 +4448,7 @@ Realm::get_stefan_boltzmann()
 }
 
 //--------------------------------------------------------------------------
-//-------- get_turb_model_constant() ------------------------------------------
+//-------- get_turb_model_constant() ---------------------------------------
 //--------------------------------------------------------------------------
 double
 Realm::get_turb_model_constant(
@@ -4643,40 +4465,20 @@ Realm::get_turb_model_constant(
 }
 
 //--------------------------------------------------------------------------
-//-------- process_adaptivity() ----------------------------------------------
+//-------- get_turbulence_model() ------------------------------------------
 //--------------------------------------------------------------------------
-bool
-Realm::process_adaptivity()
-{
-  const int timeStepCount = get_time_step_count();
-  const bool processAdaptivity = (timeStepCount % solutionOptions_->adaptivityFrequency_) == 0 ? true : false;
-  return processAdaptivity;
+TurbulenceModel
+Realm::get_turbulence_model() const {
+  return solutionOptions_->turbulenceModel_;
 }
 
 //--------------------------------------------------------------------------
-//-------- get_buckets() ----------------------------------------------
+//-------- get_buckets() ---------------------------------------------------
 //--------------------------------------------------------------------------
 stk::mesh::BucketVector const& Realm::get_buckets( stk::mesh::EntityRank rank,
-                                                   const stk::mesh::Selector & selector ,
-                                                   bool get_all) const
+                                                   const stk::mesh::Selector & selector) const
 {
-  if (metaData_->spatial_dimension() == 3 && rank == stk::topology::EDGE_RANK)
-    return bulkData_->get_buckets(rank, selector);
-
-  if (!get_all && solutionOptions_->useAdapter_ && solutionOptions_->maxRefinementLevel_ > 0)
-    {
-      stk::mesh::Selector new_selector = selector;
-      if (rank != stk::topology::NODE_RANK)
-        {
-          // adapterSelector_ avoids parent elements
-          new_selector = selector & adapterSelector_[rank];
-        }
-      return bulkData_->get_buckets(rank, new_selector);
-    }
-  else
-    {
-      return bulkData_->get_buckets(rank, selector);
-    }
+  return bulkData_->get_buckets(rank, selector);
 }
 
 //--------------------------------------------------------------------------
@@ -4718,14 +4520,24 @@ Realm::get_activate_aura()
   return activateAura_;
 }
 
-//--------------------------------------------------------------------------
-//-------- get_inactive_selector() -----------------------------------------
-//--------------------------------------------------------------------------
+/** Return a selector containing inactive parts
+ *
+ *  The selector returned from this method will contain entities from
+ *  parts that are do not participate in the PDE solution process, but
+ *  are created/used for pre and post-processing purposes. Examples include:
+ *  data probes, inactive sub-blocks from overset simulations after hole
+ *  cut, etc.
+ *
+ *  \return stk::mesh::Selector Inactive entities
+ */
 stk::mesh::Selector
 Realm::get_inactive_selector()
 {
-  // accumulate inactive parts relative to the universal part
-  
+  // Return early if matrix free is active, nothing to do
+  if (matrixFree_) {
+      return stk::mesh::Selector{};
+  }
+
   // provide inactive Overset part that excludes background surface
   //
   // Treat this selector differently because certain entities from interior
@@ -4733,6 +4545,11 @@ Realm::get_inactive_selector()
   stk::mesh::Selector nothing;
   stk::mesh::Selector inactiveOverSetSelector = (hasOverset_) ?
       oversetManager_->get_inactive_selector() : nothing;
+
+  stk::mesh::Selector inactiveDPSel =
+      (dataProbePostProcessing_ != nullptr)
+      ? dataProbePostProcessing_->get_inactive_selector()
+      : nothing;
 
   stk::mesh::Selector otherInactiveSelector = (
     metaData_->universal_part()
@@ -4743,7 +4560,7 @@ Realm::get_inactive_selector()
     otherInactiveSelector = nothing;
   }
 
-  return inactiveOverSetSelector | otherInactiveSelector;
+  return inactiveOverSetSelector | otherInactiveSelector | inactiveDPSel;
 }
 
 //--------------------------------------------------------------------------
@@ -4790,24 +4607,73 @@ Realm::get_tanh_blending(
 }
 
 //--------------------------------------------------------------------------
+//-------- rebalance_mesh() ------------------------------------------------
+//--------------------------------------------------------------------------
+void Realm::rebalance_mesh()
+{
+#ifndef HAVE_ZOLTAN2_PARMETIS
+  if (rebalanceMethod_ == "parmetis")
+    throw std::runtime_error("Zoltan2 is not built with parmetis enabled, "
+                             "try a geometric balance method instead (rcb or rib)");
+#endif
+  stk::balance::GraphCreationSettings rebalanceSettings;
+  rebalanceSettings.setDecompMethod(rebalanceMethod_);
+  stk::balance::balanceStkMesh(rebalanceSettings, *bulkData_);
+}
+
+//--------------------------------------------------------------------------
 //-------- balance_nodes() -------------------------------------------------
 //--------------------------------------------------------------------------
 void Realm::balance_nodes()
 {
-  InterfaceBalancer balancer(meta_data(), bulk_data());
-  balancer.balance_node_entities(balanceNodeOptions_.target, balanceNodeOptions_.numIters);
+  stk::balance::GraphCreationSettings nodeBalanceSettings;
+  nodeBalanceSettings.setUseNodeBalancer(true);
+  nodeBalanceSettings.setNodeBalancerTargetLoadBalance(balanceNodeOptions_.target);
+  nodeBalanceSettings.setNodeBalancerMaxIterations(balanceNodeOptions_.numIters);
+  stk::balance::balanceStkMeshNodes(nodeBalanceSettings, *bulkData_);
 }
 
-//--------------------------------------------------------------------------
-//-------- mesh_changed() --------------------------------------------------
-//--------------------------------------------------------------------------
-bool
- Realm::mesh_changed() const
+std::vector<std::string>
+Realm::handle_all_element_part_alias(const std::vector<std::string>& names) const
 {
-  // for now, adaptivity only; load-balance in the future?
-  return solutionOptions_->activateAdaptivity_;
+  if (names.size() == 1u && names.front() == allElementPartAlias) {
+    std::vector<std::string> new_names;
+    for (const auto* part : meta_data().get_mesh_parts()) {
+      ThrowRequire(part);
+      if (part->topology().rank() == stk::topology::ELEMENT_RANK) {
+        new_names.push_back(part->name());
+      }
+    }
+    return new_names;
+  }
+
+  if (std::find(names.begin(), names.end(), allElementPartAlias) != names.end()) {
+    NaluEnv::self().naluOutputP0() << "Part alias " << allElementPartAlias
+        << " present with other parts; " << allElementPartAlias << " must be a valid mesh part" << std::endl;
+  }
+  return names;
 }
 
+//--------------------------------------------------------------------------
+//-------- polynomial_order() ----------------------------------------------
+//--------------------------------------------------------------------------
+int Realm::polynomial_order() const
+{
+  return promotionOrder_;
+}
+
+//--------------------------------------------------------------------------
+//-------- matrix_free() ---------------------------------------------------
+//--------------------------------------------------------------------------
+bool Realm::matrix_free() const
+{
+  return matrixFree_;
+}
+
+Teuchos::ParameterList Realm::solver_parameters(std::string name) const
+{
+  return root()->linearSolvers_->get_solver_configuration(equationSystems_.get_solver_block_name(name));
+}
 
 } // namespace nalu
 } // namespace Sierra

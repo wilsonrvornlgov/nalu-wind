@@ -16,9 +16,11 @@
 #include <stk_mesh/base/FieldBase.hpp>
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/BulkData.hpp>
-#include <stk_ngp/Ngp.hpp>
+#include <stk_mesh/base/Ngp.hpp>
 
 #include <set>
+#include <array>
+#include <map>
 
 namespace sierra{
 namespace nalu{

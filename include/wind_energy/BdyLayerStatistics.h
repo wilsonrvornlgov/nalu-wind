@@ -12,12 +12,13 @@
 #define BDYLAYERSTATISTICS_H
 
 #include "KokkosInterface.h"
-#include "NaluParsing.h"
 #include "FieldTypeDef.h"
 
 #include "stk_mesh/base/Part.hpp"
 
 #include <memory>
+
+namespace YAML { class Node; }
 
 namespace sierra {
 namespace nalu {
@@ -80,6 +81,9 @@ public:
    *  @param[out] velArray A pointer to an array of nDim which contains the components of velocity
    */
   void time_averaged_velocity(double, double*);
+
+  //! Return the spatial average of the magnitude of the horizontal velocity field at a given height
+  void velocity_magnitude(double, double*);
 
   //! Return the spatial average of the instantaneous density field at a given height
   void density(double, double*);
@@ -151,6 +155,9 @@ private:
   //! Spatially averaged instantaneous velocity at desired heights [nHeights, nDim]
   ArrayType d_velAvg_;
 
+  //! Spatially averaged instantaneous horizontal velocity magnitude at desired heights [nHeights]
+  ArrayType d_velMagAvg_;
+
   //! Spatially and temporally averaged velocity at desired heights [nHeights, nDim]
   ArrayType d_velBarAvg_;
 
@@ -200,6 +207,9 @@ private:
 
   //! Spatially averaged instantaneous velocity at desired heights [nHeights, nDim]
   HostArrayType velAvg_;
+
+  //! Spatially averaged instantaneous horizontal velocity magnitude at desired heights [nHeights]
+  HostArrayType velMagAvg_;
 
   //! Spatially and temporally averaged velocity at desired heights [nHeights, nDim]
   HostArrayType velBarAvg_;

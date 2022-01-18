@@ -1,6 +1,7 @@
 target_sources(nalu PRIVATE
   # Algorithms
   ${CMAKE_CURRENT_SOURCE_DIR}/CourantReAlg.C
+  ${CMAKE_CURRENT_SOURCE_DIR}/DynamicPressureOpenAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/NodalGradEdgeAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/NodalGradElemAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/NodalGradBndryElemAlg.C
@@ -12,21 +13,22 @@ target_sources(nalu PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/MdotDensityAccumAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/MdotOpenCorrectorAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/MdotOpenEdgeAlg.C
-  ${CMAKE_CURRENT_SOURCE_DIR}/TAMSAvgMdotEdgeAlg.C
-  ${CMAKE_CURRENT_SOURCE_DIR}/TAMSAvgMdotElemAlg.C
-  ${CMAKE_CURRENT_SOURCE_DIR}/SSTTAMSAveragesAlg.C
+  ${CMAKE_CURRENT_SOURCE_DIR}/AMSAvgMdotEdgeAlg.C
+  ${CMAKE_CURRENT_SOURCE_DIR}/SSTAMSAveragesAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/MetricTensorElemAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/TurbViscKsgsAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/TurbViscSSTAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/WallFuncGeometryAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/ABLWallFrictionVelAlg.C
+  ${CMAKE_CURRENT_SOURCE_DIR}/ABLWallFluxesAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/TKEWallFuncAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/GeometryInteriorAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/GeometryBoundaryAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/SDRLowReWallAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/SDRWallFuncAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/NodalGradPOpenBoundaryAlg.C
-
+  ${CMAKE_CURRENT_SOURCE_DIR}/SSTMaxLengthScaleAlg.C
+  ${CMAKE_CURRENT_SOURCE_DIR}/MomentumABLWallFuncMaskUtil.C
   # Algorithm Drivers
   ${CMAKE_CURRENT_SOURCE_DIR}/CourantReAlgDriver.C
   ${CMAKE_CURRENT_SOURCE_DIR}/FieldUpdateAlgDriver.C
@@ -37,4 +39,5 @@ target_sources(nalu PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/GeometryAlgDriver.C
   ${CMAKE_CURRENT_SOURCE_DIR}/WallFricVelAlgDriver.C
   ${CMAKE_CURRENT_SOURCE_DIR}/SDRWallFuncAlgDriver.C
+  ${CMAKE_CURRENT_SOURCE_DIR}/SSTMaxLengthScaleDriver.C
   )
