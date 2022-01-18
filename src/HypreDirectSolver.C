@@ -38,8 +38,10 @@ HypreIntType Hypre_ParCSRPCGCreate(MPI_Comm comm, HYPRE_Solver *solver)
 HypreIntType Hypre_ParCSRGMRESCreate(MPI_Comm comm, HYPRE_Solver *solver)
 { return HYPRE_ParCSRGMRESCreate(comm, solver);}
 
+#ifdef HYPRE_COGMRES
 HypreIntType Hypre_ParCSRCOGMRESCreate(MPI_Comm comm, HYPRE_Solver *solver)
 { return HYPRE_ParCSRCOGMRESCreate(comm, solver);}
+#endif
 
 HypreIntType Hypre_ParCSRFlexGMRESCreate(MPI_Comm comm, HYPRE_Solver *solver)
 { return HYPRE_ParCSRFlexGMRESCreate(comm, solver);}
@@ -71,7 +73,8 @@ HypreDirectSolver::solve(
 {
   // Initialize the solver on first entry
   double time = -NaluEnv::self().nalu_time();
-  if (initializeSolver_) initSolver();
+  if (!isInitialized_ || config_->recomputePreconditioner())
+    initSolver();
   time += NaluEnv::self().nalu_time();
   timerPrecond_ = time;
 
@@ -100,22 +103,6 @@ HypreDirectSolver::solve(
   numIterations = numIters;
 
   return status;
-}
-
-void
-HypreDirectSolver::set_initialize_solver_flag()
-{
-  /* used for tracking how often to reinit the solver/preconditioner */
-  internalIterCounter_++;
-
-  if (!config_->recomputePreconditioner() || config_->reusePreconditioner())
-    initializeSolver_ = false;
-  else {
-    if (internalIterCounter_%config_->recomputePrecondFrequency()==0)
-      initializeSolver_ = true;
-    else
-      initializeSolver_ = false;
-  }
 }
 
 void
@@ -165,8 +152,7 @@ HypreDirectSolver::initSolver()
 
   setupSolver();
 
-  /* solver is setup so set this flag to false */
-  initializeSolver_ = false;
+  isInitialized_ = true;
 }
 
 void
@@ -209,6 +195,7 @@ HypreDirectSolver::createSolver()
     solverFinalResidualNormPtr_ = &HYPRE_GMRESGetFinalRelativeResidualNorm;
     break;
 
+#ifdef HYPRE_COGMRES
   case Hypre::COGMRES:
     solverCreatePtr_ = &Hypre_ParCSRCOGMRESCreate;
     solverDestroyPtr_ = &HYPRE_ParCSRCOGMRESDestroy;
@@ -219,6 +206,7 @@ HypreDirectSolver::createSolver()
     solverNumItersPtr_ = &HYPRE_COGMRESGetNumIterations;
     solverFinalResidualNormPtr_ = &HYPRE_COGMRESGetFinalRelativeResidualNorm;
     break;
+#endif
 
   case Hypre::FlexGMRES:
     solverCreatePtr_ = &Hypre_ParCSRFlexGMRESCreate;

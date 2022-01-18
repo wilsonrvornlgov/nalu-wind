@@ -19,8 +19,7 @@
 #include "stk_mesh/base/FieldParallel.hpp"
 #include "stk_mesh/base/FieldBLAS.hpp"
 #include "stk_mesh/base/MetaData.hpp"
-#include "stk_mesh/base/NgpFieldParallel.hpp"
-#include "stk_mesh/base/NgpMesh.hpp"
+#include "stk_ngp/NgpFieldParallel.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -42,7 +41,7 @@ void SDRWallFuncAlgDriver::pre_work()
 
 void SDRWallFuncAlgDriver::post_work()
 {
-  using MeshIndex = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
+  using MeshIndex = nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
   const auto& ngpMesh = realm_.ngp_mesh();
 
   auto& bcsdr = nalu_ngp::get_ngp_field(realm_.mesh_info(), "wall_model_sdr_bc");
@@ -56,7 +55,7 @@ void SDRWallFuncAlgDriver::post_work()
   // Parallel synchronization
   const std::vector<NGPDoubleFieldType*> fields {&bcsdr, &wallArea};
   const bool doFinalSyncToDevice = true;
-  stk::mesh::parallel_sum(realm_.bulk_data(), fields, doFinalSyncToDevice);
+  ngp::parallel_sum(realm_.bulk_data(), fields, doFinalSyncToDevice);
 
   auto* bcsdrF = realm_.meta_data().get_field(
     stk::topology::NODE_RANK, "wall_model_sdr_bc");
@@ -97,7 +96,6 @@ void SDRWallFuncAlgDriver::post_work()
 
   wallArea.modify_on_device();
   bcsdr.modify_on_device();
-  sdrWallBC.modify_on_device();
   sdr.modify_on_device();
 }
 

@@ -12,14 +12,13 @@
 #include "BuildTemplates.h"
 #include "master_element/MasterElement.h"
 #include "master_element/MasterElementFactory.h"
+#include "ngp_algorithms/ViewHelper.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldOps.h"
-#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "ScratchViews.h"
 #include "SolutionOptions.h"
 #include "utils/StkHelpers.h"
-#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra{
 namespace nalu{
@@ -47,9 +46,6 @@ NodalGradPOpenBoundaryT::NodalGradPOpenBoundaryT(
     pressureField_ (get_field_ordinal(realm_.meta_data(), "pressure")),
     gradP_         (get_field_ordinal(realm_.meta_data(), "dpdx")),
     coordinates_   (get_field_ordinal(realm_.meta_data(), realm.get_coordinates_name())),
-    dynPress_ (get_field_ordinal(realm_.meta_data(), "dynamic_pressure", realm.meta_data().side_rank())),
-    meFC_  (MasterElementRepo::get_surface_master_element<typename AlgTraits::FaceTraits>()),
-    meSCS_ (MasterElementRepo::get_surface_master_element<typename AlgTraits::ElemTraits>()),
     faceData_(realm.meta_data()),
     elemData_(realm.meta_data())
 {
@@ -67,11 +63,11 @@ NodalGradPOpenBoundaryT::NodalGradPOpenBoundaryT(
   elemData_.add_cvfem_surface_me(meSCS_);
   elemData_.add_gathered_nodal_field(pressureField_,1);
 
-  faceData_.add_face_field(exposedAreaVec_, AlgTraits::numFaceIp_, AlgTraits::nDim_);
-  faceData_.add_face_field(dynPress_, AlgTraits::numFaceIp_);
+  faceData_.add_face_field(exposedAreaVec_, num_face_ip, nDim);
   faceData_.add_gathered_nodal_field(dualNodalVol_,1);
   faceData_.add_gathered_nodal_field(exposedPressureField_,1);
-  faceData_.add_gathered_nodal_field(gradP_, AlgTraits::nDim_);
+  faceData_.add_gathered_nodal_field(gradP_,       nodes_per_face, nDim);
+  faceData_.add_coordinates_field   (coordinates_, nDim, CURRENT_COORDINATES);
 
   const ELEM_DATA_NEEDED fc_shape_fcn  = useShifted_ ?  FC_SHIFTED_SHAPE_FCN :  FC_SHAPE_FCN;
   const ELEM_DATA_NEEDED scs_shape_fcn = useShifted_ ? SCS_SHIFTED_SHAPE_FCN : SCS_SHAPE_FCN;
@@ -88,7 +84,7 @@ NodalGradPOpenBoundaryT::NodalGradPOpenBoundaryT(
 void
 NodalGradPOpenBoundaryT::execute()
 {
-  using SimdDataType = nalu_ngp::FaceElemSimdData<stk::mesh::NgpMesh>;
+  using SimdDataType = nalu_ngp::FaceElemSimdData<ngp::Mesh>;
 
   const auto& meshInfo = realm_.mesh_info();
   const auto& meta_data = meshInfo.meta();
@@ -101,8 +97,6 @@ NodalGradPOpenBoundaryT::execute()
   const unsigned exposedPressureField = exposedPressureField_;
   const unsigned pressureField        = pressureField_;
   const unsigned coordsID             = coordinates_;
-  const unsigned dynPID               = dynPress_;
-
 
   const auto& fieldMgr = meshInfo.ngp_field_manager();
   const auto   ngpMesh = meshInfo.ngp_mesh();
@@ -121,13 +115,10 @@ NodalGradPOpenBoundaryT::execute()
   const int num_face_ip       = meFC_->num_integration_points();
   const int nodes_per_face    = meFC_->nodes_per_element();
 
-
-  const auto pstabFac = realm_.solutionOptions_->activateOpenMdotCorrection_
-    ? 0.0 : 1.0;                        
-
   nalu_ngp::run_face_elem_algorithm(
     algName, meshInfo, faceData_, elemData_, s_locally_owned_union,
     KOKKOS_LAMBDA(SimdDataType& fdata) {
+
       const int* ipNodeMap = meFC->ipNodeMap();
 
       auto& faceView = fdata.simdFaceView;
@@ -135,8 +126,6 @@ NodalGradPOpenBoundaryT::execute()
       const auto v_areav        = faceView.get_scratch_view_2D(exposedAreaVec);
       const auto v_dnv          = faceView.get_scratch_view_1D(dualNodalVol);
       const auto face_p_field   = faceView.get_scratch_view_1D(exposedPressureField);
-      const auto dyn_p_field   = faceView.get_scratch_view_1D(dynPID);
-
       const auto v_coord        = faceView.get_scratch_view_2D(coordsID);
       const auto elem_p_field   = elemView.get_scratch_view_1D(pressureField);
 
@@ -163,7 +152,7 @@ NodalGradPOpenBoundaryT::execute()
 
         const int node = ipNodeMap[ip];
         const DoubleType vol = v_dnv(node);
-        const DoubleType press_div_vol = (pIp - pstabFac * dyn_p_field(ip))/ vol;
+        const DoubleType press_div_vol = pIp / vol;
 
         for ( int d = 0; d < nDim; ++d ) {
           const DoubleType areav = v_areav(ip, d);

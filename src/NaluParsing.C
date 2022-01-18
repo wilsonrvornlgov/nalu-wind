@@ -10,13 +10,11 @@
 
 /*------------------------------------------------------------------------*/
 
-#include "edge_kernels/MomentumOpenEdgeKernel.h"
 #include <NaluParsing.h>
 #include <NaluEnv.h>
 #include <Simulation.h>
 #include <Enums.h>
 
-#include <stdexcept>
 #include <stk_util/util/ReportHandler.hpp>
 
 // yaml for parsing..
@@ -167,11 +165,13 @@ namespace sierra
         }
       }
 
+      const YAML::Node& oversetUserData = node["overset_user_data"];
+
       switch (oversetBC.oversetConnectivityType_)
       {
         case OversetBoundaryConditionData::TPL_TIOGA:
 #ifdef NALU_USES_TIOGA
-          oversetBC.userData_.oversetBlocks_ = node["overset_user_data"];
+          oversetBC.userData_.oversetBlocks_ = oversetUserData;
           break;
 #else
           throw std::runtime_error(
@@ -612,19 +612,6 @@ namespace YAML
     return true;
   }
 
- bool convert<sierra::nalu::GammaInf>::decode(const Node& node,
-     sierra::nalu::GammaInf& gamma)
-   {
-     if (!node.IsScalar())
-     {
-       return false;
-     }
-
-     gamma.gamma_ = node.as<double>();
-
-     return true;
-   }
-
   bool convert<sierra::nalu::Temperature>::decode(const Node& node,
     sierra::nalu::Temperature& t)
   {
@@ -665,6 +652,58 @@ namespace YAML
     {
       yk.massFraction_[k] = node[k].as<double>();
     }
+
+    return true;
+  }
+
+  bool convert<sierra::nalu::Emissivity>::decode(const Node& node,
+    sierra::nalu::Emissivity& emiss)
+  {
+    if (!node.IsScalar())
+    {
+      return false;
+    }
+
+    emiss.emissivity_ = node.as<double>();
+
+    return true;
+  }
+
+  bool convert<sierra::nalu::Irradiation>::decode(const Node& node,
+    sierra::nalu::Irradiation& irrad)
+  {
+    if (!node.IsScalar())
+    {
+      return false;
+    }
+
+    irrad.irradiation_ = node.as<double>();
+
+    return true;
+  }
+
+  bool convert<sierra::nalu::Transmissivity>::decode(const Node& node,
+    sierra::nalu::Transmissivity& tmiss)
+  {
+    if (!node.IsScalar())
+    {
+      return false;
+    }
+
+    tmiss.transmissivity_ = node.as<double>();
+
+    return true;
+  }
+
+  bool convert<sierra::nalu::EnvironmentalT>::decode(const Node& node,
+    sierra::nalu::EnvironmentalT& et)
+  {
+    if (!node.IsScalar())
+    {
+      return false;
+    }
+
+    et.environmentalT_ = node.as<double>();
 
     return true;
   }
@@ -721,6 +760,32 @@ namespace YAML
     return true;
   }
 
+  bool convert<sierra::nalu::HeatTransferCoefficient>::decode(const Node& node,
+    sierra::nalu::HeatTransferCoefficient& htc)
+  {
+    if (!node.IsScalar())
+    {
+      return false;
+    }
+
+    htc.heatTransferCoefficient_ = node.as<double>();
+
+    return true;
+  }
+
+  bool convert<sierra::nalu::RobinCouplingParameter>::decode(const Node& node,
+    sierra::nalu::RobinCouplingParameter& alpha)
+  {
+    if (!node.IsScalar())
+    {
+      return false;
+    }
+
+    alpha.robinCouplingParameter_ = node.as<double>();
+
+    return true;
+  }
+
   bool convert<sierra::nalu::WallUserData>::decode(const Node& node,
     sierra::nalu::WallUserData& wallData)
   {
@@ -769,16 +834,25 @@ namespace YAML
       wallData.bcDataSpecifiedMap_["mass_fraction"] = true;
       wallData.bcDataTypeMap_["mass_fraction"] = sierra::nalu::CONSTANT_UD;
     }
+    if (node["emissivity"])
+    {
+      wallData.emissivity_ = node["emissivity"].as<sierra::nalu::Emissivity>();
+      wallData.emissSpec_ = true;
+    }
+    if (node["transmissivity"])
+    {
+      wallData.transmissivity_ = node["transmissivity"].as<
+          sierra::nalu::Transmissivity>();
+    }
+    if (node["environmental_temperature"])
+    {
+      wallData.environmentalT_ = node["environmental_temperature"].as<
+          sierra::nalu::EnvironmentalT>();
+    }
     if (node["adiabatic"])
     {
       wallData.isAdiabatic_ = node["adiabatic"].as<bool>();
     }
-
-    if (node["no_slip"])
-    {
-      wallData.isNoSlip_ = node["no_slip"].as<bool>();
-    }
-
     if (node["interface"])
     {
       wallData.isInterface_ = node["interface"].as<bool>();
@@ -800,30 +874,33 @@ namespace YAML
       wallData.z0_ =
           node["roughness_height"].as<sierra::nalu::RoughnessHeight>();
     }
-    if (node["RANS_abl_bc"])
+    if (node["heat_transfer_coefficient"])
     {
-      const bool is_activated = node["RANS_abl_bc"].as<bool>();
-      wallData.RANSAblBcApproach_ = is_activated;
-
-      if (is_activated) {
-        wallData.uRef_ = node["reference_velocity"].as<double>();
-        wallData.zRef_ = node["reference_height"].as<double>();
-      }
+      wallData.heatTransferCoefficient_ = node["heat_transfer_coefficient"].as<
+          sierra::nalu::HeatTransferCoefficient>();
+      wallData.htcSpec_ = true;
     }
-    // To use the engineering wall model.
+    if (node["irradiation"])
+    {
+      wallData.irradiation_ =
+          node["irradiation"].as<sierra::nalu::Irradiation>();
+      wallData.irradSpec_ = true;
+    }
+    if (node["robin_coupling_parameter"])
+    {
+      wallData.robinCouplingParameter_ = node["robin_coupling_parameter"].as<
+          sierra::nalu::RobinCouplingParameter>();
+      wallData.robinParameterSpec_ = true;
+    }
     if (node["use_wall_function"])
     {
       wallData.wallFunctionApproach_ = node["use_wall_function"].as<bool>();
     }
-    // If the wall is treated as an atmospheric boundary layer surface stress model.
-    if (node["abl_wall_function"])
+    if (node["use_abl_wall_function"])
     {
-      // - set the wall function and ABL wall function flags to true.
-      wallData.wallFunctionApproach_ = true;
-      wallData.ablWallFunctionApproach_ = true;
-        
-      // - get the overall ABL wall function YAML node.
-      wallData.ablWallFunctionNode_ = node["abl_wall_function"];
+      wallData.wallFunctionApproach_ = node["use_abl_wall_function"].as<bool>();
+      wallData.ablWallFunctionApproach_ =
+          node["use_abl_wall_function"].as<bool>();
     }
     if (node["pressure"])
     {
@@ -1022,35 +1099,6 @@ namespace YAML
       openData.tempSpec_ = true;
     }
 
-    if (node["total_pressure"])
-    {
-      openData.totalP_ =
-          node["total_pressure"].as<bool>();
-    }
-
-    if (node["entrainment_method"])
-    {
-      const auto ent_meth =  node["entrainment_method"].as<std::string>();
-      bool found = false;
-      for (auto& nameMethPair : sierra::nalu::EntrainmentMethodMap) {
-        if (ent_meth == nameMethPair.first) {
-          openData.entrainMethod_ = nameMethPair.second;
-          found = true;
-        }
-      }
-      
-      if (!found) {
-        std::string avail = "Unknown entrainment method " + ent_meth + ". Available methods are";
-        for (auto& nameMethPair : sierra::nalu::EntrainmentMethodMap) {
-          avail += " " + nameMethPair.first;
-        }
-        throw std::runtime_error(avail);
-      }
-      if (openData.entrainMethod_ == sierra::nalu::EntrainmentMethod::SPECIFIED && openData.totalP_) {
-        throw std::runtime_error("Specifying both total pressure and specified entrainment is not supported");
-      }
-
-    }
     return true;
   }
 

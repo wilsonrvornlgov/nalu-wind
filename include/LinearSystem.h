@@ -15,8 +15,12 @@
 #include <LinearSolverTypes.h>
 #include <KokkosInterface.h>
 
-#include <stk_mesh/base/Ngp.hpp>
-#include <stk_mesh/base/NgpMesh.hpp>
+#include <Teuchos_RCP.hpp>
+
+#include <Teuchos_GlobalMPISession.hpp>
+#include <Teuchos_oblackholestream.hpp>
+
+#include <stk_ngp/Ngp.hpp>
 
 #include <vector>
 #include <string>
@@ -37,16 +41,15 @@ namespace nalu{
 class EquationSystem;
 class Realm;
 class LinearSolver;
-class LinearSolverConfig;
 
 class CoeffApplier
 {
 public:
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   CoeffApplier() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
-  virtual ~CoeffApplier() = default;
+  KOKKOS_FUNCTION
+  virtual ~CoeffApplier() {}
 
   KOKKOS_FUNCTION
   virtual void resetRows(unsigned numNodes,
@@ -58,7 +61,7 @@ public:
 
   KOKKOS_FUNCTION
   virtual void operator()(unsigned numEntities,
-                          const stk::mesh::NgpMesh::ConnectedNodes& entities,
+                          const ngp::Mesh::ConnectedNodes& entities,
                           const SharedMemView<int*,DeviceShmem> & localIds,
                           const SharedMemView<int*,DeviceShmem> & sortPermutation,
                           const SharedMemView<const double*,DeviceShmem> & rhs,
@@ -67,7 +70,6 @@ public:
 
   virtual void free_device_pointer() = 0;
   virtual CoeffApplier* device_pointer() = 0;
-  
 };
 
 class LinearSystem
@@ -88,8 +90,6 @@ public:
   }
 
   static LinearSystem *create(Realm& realm, const unsigned numDof, EquationSystem *eqSys, LinearSolver *linearSolver);
-
-  const LinearSolverConfig& config() const;
 
   // Graph/Matrix Construction
   virtual void buildNodeGraph(const stk::mesh::PartVector & parts)=0; // for nodal assembly (e.g., lumped mass and source)
@@ -113,21 +113,67 @@ public:
    *  sierra::nalu::FixPressureAtNodeAlgorithm for an example of this use case.
    */
   virtual void buildDirichletNodeGraph(const std::vector<stk::mesh::Entity>&) {}
-  virtual void buildDirichletNodeGraph(const stk::mesh::NgpMesh::ConnectedNodes) {}
+  virtual void buildDirichletNodeGraph(const ngp::Mesh::ConnectedNodes) {}
 
   // Matrix Assembly
   virtual void zeroSystem()=0;
 
+#ifndef KOKKOS_ENABLE_CUDA
+  class DefaultHostOnlyCoeffApplier : public CoeffApplier
+  {
+  public:
+    KOKKOS_FUNCTION
+    DefaultHostOnlyCoeffApplier(LinearSystem& linSys)
+    : linSys_(linSys)
+    {}
+
+    KOKKOS_FUNCTION
+    ~DefaultHostOnlyCoeffApplier() {}
+
+    KOKKOS_FUNCTION
+    virtual void resetRows(unsigned numNodes,
+                           const stk::mesh::Entity* nodeList,
+                           const unsigned beginPos,
+                           const unsigned endPos,
+                           const double diag_value = 0.0,
+                           const double rhs_residual = 0.0)
+    {
+      linSys_.resetRows(numNodes, nodeList, beginPos, endPos, diag_value, rhs_residual);
+    }
+
+    KOKKOS_FUNCTION
+    virtual void operator()(unsigned numEntities,
+                            const ngp::Mesh::ConnectedNodes& entities,
+                            const SharedMemView<int*,DeviceShmem> & localIds,
+                            const SharedMemView<int*,DeviceShmem> & sortPermutation,
+                            const SharedMemView<const double*,DeviceShmem> & rhs,
+                            const SharedMemView<const double**,DeviceShmem> & lhs,
+                            const char * trace_tag);
+
+    void free_device_pointer() {}
+
+    CoeffApplier* device_pointer() { return this; }
+
+  private:
+    LinearSystem& linSys_;
+  };
+#endif
 
   virtual CoeffApplier* get_coeff_applier()
   {
+#ifndef KOKKOS_ENABLE_CUDA
+    if (!hostCoeffApplier) {
+      hostCoeffApplier.reset(new DefaultHostOnlyCoeffApplier(*this));
+    }
+    return hostCoeffApplier.get();
+#else
     return nullptr;
+#endif
   }
-
 
   virtual void sumInto(
     unsigned numEntities,
-    const stk::mesh::NgpMesh::ConnectedNodes& entities,
+    const ngp::Mesh::ConnectedNodes& entities,
     const SharedMemView<const double*,DeviceShmem> & rhs,
     const SharedMemView<const double**,DeviceShmem> & lhs,
     const SharedMemView<int*,DeviceShmem> & localIds,
@@ -178,14 +224,14 @@ public:
   virtual void writeToFile(const char * filename, bool useOwned=true)=0;
   virtual void writeSolutionToFile(const char * filename, bool useOwned=true)=0;
   virtual unsigned numDof() const { return numDof_; }
-  const int & linearSolveIterations() const {return linearSolveIterations_; }
-  const double & linearResidual() const {return linearResidual_; }
-  const double & nonLinearResidual() const {return nonLinearResidual_; }
-  const double & scaledNonLinearResidual() const {return scaledNonLinearResidual_; }
+  const int & linearSolveIterations() {return linearSolveIterations_; }
+  const double & linearResidual() {return linearResidual_; }
+  const double & nonLinearResidual() {return nonLinearResidual_; }
+  const double & scaledNonLinearResidual() {return scaledNonLinearResidual_; }
   void setNonLinearResidual(const double nlr) { nonLinearResidual_ = nlr;}
-  std::string name() const { return eqSysName_; }
-  bool recomputePreconditioner() const {return recomputePreconditioner_;}
-  bool reusePreconditioner() const {return reusePreconditioner_;}
+  const std::string name() { return eqSysName_; }
+  bool & recomputePreconditioner() {return recomputePreconditioner_;}
+  bool & reusePreconditioner() {return reusePreconditioner_;}
   double get_timer_precond();
   void zero_timer_precond();
   bool useSegregatedSolver() const;
@@ -207,7 +253,7 @@ protected:
 
   const unsigned numDof_;
   const std::string eqSysName_;
-  LinearSolver * linearSolver_{nullptr};
+  LinearSolver * linearSolver_;
   int linearSolveIterations_;
   double nonLinearResidual_;
   double linearResidual_;

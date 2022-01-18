@@ -1,6 +1,9 @@
+
 #include "mesh_motion/MeshMotionAlg.h"
 
-#include "mesh_motion/FrameMoving.h"
+#include "mesh_motion/FrameInertial.h"
+#include "mesh_motion/FrameNonInertial.h"
+
 #include "NaluParsing.h"
 
 #include <cassert>
@@ -14,8 +17,6 @@ MeshMotionAlg::MeshMotionAlg(
   const YAML::Node& node)
 {
   load(bulk, node);
-
-  set_deformation_flag();
 }
 
 void MeshMotionAlg::load(
@@ -24,22 +25,43 @@ void MeshMotionAlg::load(
 {
   // get motion information for entire mesh
   const int num_groups = node.size();
-  movingFrameVec_.resize(num_groups);
+  frameVec_.resize(num_groups);
+
+  // temporary vector to store frame names
+  std::vector<std::string> frameNames(num_groups);
 
   for (int i=0; i < num_groups; i++) {
 
     // extract current motion group info
     const auto& ginfo = node[i];
 
-    movingFrameVec_[i].reset(new FrameMoving(bulk, ginfo));
-  }
-}
+    // get name of motion group
+    frameNames[i] = ginfo["name"].as<std::string>();
 
-void MeshMotionAlg::set_deformation_flag()
-{
-  for (size_t i=0; i < movingFrameVec_.size(); i++)
-    if( movingFrameVec_[i]->is_deforming() )
-      isDeforming_ = true;
+    // get frame definition of motion group
+    std::string frame;
+    get_required(ginfo, "frame", frame);
+
+    if( frame == "inertial" )
+      frameVec_[i].reset(new FrameInertial(bulk, ginfo));
+    else if( frame == "non_inertial" )
+      frameVec_[i].reset(new FrameNonInertial(bulk, ginfo));
+    else
+      throw std::runtime_error("MeshMotion: Invalid frame type: " + frame);
+
+    // get the reference frame index if it exists
+    if(ginfo["reference"])
+    {
+      std::string refFrameName = ginfo["reference"].as<std::string>();
+
+      auto it = std::find(frameNames.begin(), frameNames.end(), refFrameName);
+
+      if( it ==  frameNames.end() )
+        throw std::runtime_error("MeshMotion: Invalid reference frame: " + refFrameName);
+
+      refFrameMap_[i] = frameVec_[std::distance(frameNames.begin(), it)];
+    }
+  }
 }
 
 void MeshMotionAlg::initialize( const double time )
@@ -47,12 +69,19 @@ void MeshMotionAlg::initialize( const double time )
   if(isInit_)
     throw std::runtime_error("MeshMotionAlg::initialize(): Re-initialization of MeshMotionAlg not valid");
 
-  for (size_t i=0; i < movingFrameVec_.size(); i++)
+  for (size_t i=0; i < frameVec_.size(); i++)
   {
-    movingFrameVec_[i]->setup();
+    frameVec_[i]->setup();
+
+    // set reference frame if they exist
+    if( refFrameMap_.find(i) != refFrameMap_.end() )
+    {
+      MotionBase::TransMatType ref_frame = refFrameMap_[i]->get_inertial_frame();
+      frameVec_[i]->set_ref_frame(ref_frame);
+    }
 
     // update coordinates and velocity
-    movingFrameVec_[i]->update_coordinates_velocity(time);
+    frameVec_[i]->update_coordinates_velocity(time);
   }
 
   isInit_ = true;
@@ -60,26 +89,17 @@ void MeshMotionAlg::initialize( const double time )
 
 void MeshMotionAlg::execute(const double time)
 {
-  for (size_t i=0; i < movingFrameVec_.size(); i++) {
-    movingFrameVec_[i]->update_coordinates_velocity(time);
+  for (size_t i=0; i < frameVec_.size(); i++) {
+
+    if( !frameVec_[i]->is_inertial() )
+      frameVec_[i]->update_coordinates_velocity(time);
   }
 }
 
 void MeshMotionAlg::post_compute_geometry()
 {
-  for (size_t i=0; i < movingFrameVec_.size(); i++)
-    movingFrameVec_[i]->post_compute_geometry();
-}
-
-stk::mesh::PartVector MeshMotionAlg::get_partvec()
-{ 
-  stk::mesh::PartVector fpartVec;
-  for (size_t i=0; i < movingFrameVec_.size(); i++) {
-    stk::mesh::PartVector fPartVec = movingFrameVec_[i]->get_partvec();
-    for (auto p: fPartVec)
-      fpartVec.push_back(p);
-  }
-  return fpartVec;
+  for (size_t i=0; i < frameVec_.size(); i++)
+    frameVec_[i]->post_compute_geometry();
 }
 
 } // nalu

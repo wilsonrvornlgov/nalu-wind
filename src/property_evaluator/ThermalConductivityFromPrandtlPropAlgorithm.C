@@ -61,10 +61,6 @@ ThermalConductivityFromPrandtlPropAlgorithm::execute()
   stk::mesh::BucketVector const& node_buckets =
     realm_.get_buckets( stk::topology::NODE_RANK, selector );
 
-  thermalCond_->sync_to_host();
-  specHeat_->sync_to_host();
-  viscosity_->sync_to_host();
-
   for ( stk::mesh::BucketVector::const_iterator ib = node_buckets.begin();
         ib != node_buckets.end() ; ++ib ) {
     stk::mesh::Bucket & b = **ib ;
@@ -78,8 +74,6 @@ ThermalConductivityFromPrandtlPropAlgorithm::execute()
       thermalCond[k] = specHeat[k]*viscosity[k]/Pr_;
     }
   }
-  thermalCond_->modify_on_host();
-  thermalCond_->sync_to_device();
 }
 
 } // namespace nalu

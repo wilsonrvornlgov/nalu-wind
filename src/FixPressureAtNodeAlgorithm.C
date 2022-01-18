@@ -12,7 +12,6 @@
 #include "FixPressureAtNodeInfo.h"
 #include "Realm.h"
 #include "EquationSystem.h"
-#include "PeriodicManager.h"
 #include "TpetraLinearSystem.h"
 #include "SolutionOptions.h"
 
@@ -21,7 +20,6 @@
 #include <stk_mesh/base/GetBuckets.hpp>
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/Part.hpp>
-#include "stk_mesh/base/NgpMesh.hpp"
 #include <stk_util/parallel/ParallelReduce.hpp>
 
 #include <limits>
@@ -52,15 +50,14 @@ FixPressureAtNodeAlgorithm::~FixPressureAtNodeAlgorithm()
 void
 FixPressureAtNodeAlgorithm::initialize_connectivity()
 {
-  /* Hypre GPU Assembly requires initialize to happen here (for graph creation), not in execute */
-  if (doInit_)
-    initialize();
   eqSystem_->linsys_->buildDirichletNodeGraph(refNodeList_);
 }
 
 void
 FixPressureAtNodeAlgorithm::execute()
 {
+  if (doInit_)
+    initialize();
 
   int numNodes = refNodeList_.size();
   ThrowAssertMsg(numNodes <= 1,
@@ -73,8 +70,8 @@ FixPressureAtNodeAlgorithm::execute()
 
   // Reset LHS and RHS for this matrix
   CoeffApplier* deviceCoeffApplier = eqSystem_->linsys_->get_coeff_applier();
-
-  stk::mesh::NgpMesh ngpMesh = realm_.ngp_mesh();
+ 
+  ngp::Mesh ngpMesh = realm_.ngp_mesh();
   NGPDoubleFieldType ngpPressure = realm_.ngp_field_manager().get_field<double>(pressure_->mesh_meta_data_ordinal());
   double refPressure = info_.refPressure_;
   const bool fixPressureNode = fixPressureNode_;
@@ -98,7 +95,7 @@ FixPressureAtNodeAlgorithm::execute()
 
     Kokkos::parallel_for(Kokkos::TeamThreadRange(team, 1), [=](const size_t& )
     {
-      stk::mesh::NgpMesh::ConnectedNodes refNodeList(&targetNode, 1);
+      ngp::Mesh::ConnectedNodes refNodeList(&targetNode, 1);
       deviceCoeffApplier->resetRows(1, &targetNode, 0, 1);
   
       // Fix the pressure for this node only if this is proc is owner
@@ -207,36 +204,20 @@ FixPressureAtNodeAlgorithm::process_pressure_fix_node(
 {
   auto& bulk = realm_.bulk_data();
 
-  // Store the target node on the owning processor as well as the shared
-  // processors.
+  // Store the target node on the owning processor as well as the shared processors.
   targetNode_ = bulk.get_entity(stk::topology::NODE_RANK, nodeID);
-
-  // If this node isn't on this MPI rank, return early
-  if (!bulk.is_valid(targetNode_)) {
-    fixPressureNode_ = false;
-    return;
-  }
-
-  // For periodic simulations, make sure that the node doesn't lie on periodic
-  // boundaries.
-  if (realm_.hasPeriodic_) {
-    stk::mesh::Selector pSel =
-      stk::mesh::selectUnion(
-          realm_.periodicManager_->periodic_parts_vector());
-    if (pSel(bulk.bucket(targetNode_))) {
-      throw std::runtime_error(
-        "FixPressureAtNode: Target node lies on a periodic boundary. This is "
-        "not supported. Please change the target location.");
-    }
-  }
-
-  if (bulk.bucket(targetNode_).owned() || bulk.bucket(targetNode_).shared()) {
-    refNodeList_ = stk::mesh::NgpMesh::ConnectedNodes(&targetNode_, 1);
+  if (bulk.is_valid(targetNode_) &&
+      (bulk.bucket(targetNode_).owned() ||
+       bulk.bucket(targetNode_).shared())) {
+    refNodeList_ = ngp::Mesh::ConnectedNodes(&targetNode_, 1);
 
     // Only apply pressure correction on the owning processor
     fixPressureNode_ = bulk.bucket(targetNode_).owned();
+  } else {
+    fixPressureNode_ = false;
   }
 }
+
 
 }  // nalu
 }  // sierra

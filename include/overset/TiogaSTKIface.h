@@ -10,14 +10,11 @@
 
 #include "overset/TiogaOptions.h"
 #include "overset/OversetFieldData.h"
+#include "yaml-cpp/yaml.h"
 
 #include <vector>
 #include <memory>
 #include <array>
-
-namespace YAML {
-class Node;
-}
 
 namespace TIOGA {
 class tioga;
@@ -47,8 +44,7 @@ public:
    *  @param node YAML node containing overset inputs
    */
   TiogaSTKIface(sierra::nalu::OversetManagerTIOGA&,
-                const YAML::Node&,
-                const std::string&);
+                const YAML::Node&);
 
   ~TiogaSTKIface();
 
@@ -70,20 +66,11 @@ public:
    */
   void execute(const bool isDecoupled);
 
-  void register_mesh();
-
-  void post_connectivity_work(const bool isDecoupled = true);
-
-  int register_solution(const std::vector<sierra::nalu::OversetFieldData>&);
-
-  void update_solution(const std::vector<sierra::nalu::OversetFieldData>&);
-
   virtual void overset_update_fields(
     const std::vector<sierra::nalu::OversetFieldData>&);
 
   virtual void overset_update_field(
-    stk::mesh::FieldBase* field, const int nrows = 1, const int ncols = 1,
-    const bool doFinalSyncToDevice = true);
+    stk::mesh::FieldBase* field, int nrows = 1, int ncols = 1);
 
 private:
   TiogaSTKIface() = delete;
@@ -116,12 +103,6 @@ private:
    */
   void populate_overset_info();
 
-  //! Synchronize fields before performing overset connectivity
-  void pre_connectivity_sync();
-
-  //! Synchronize modified fields after performing overset connectivity
-  void post_connectivity_sync();
-
   //! Reference to Nalu OversetManager object
   sierra::nalu::OversetManagerTIOGA& oversetManager_;
 
@@ -138,7 +119,7 @@ private:
   std::vector<std::unique_ptr<TiogaBlock>> blocks_;
 
   //! Reference to the TIOGA API interface
-  TIOGA::tioga& tg_;
+  std::unique_ptr<TIOGA::tioga> tg_;
 
   //! Work array used to hold donor elements that require ghosting to receptor
   //! MPI ranks

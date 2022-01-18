@@ -1,10 +1,9 @@
-// Copyright 2019 National Technology & Engineering Solutions of Sandia, LLC
-// (NTESS), National Renewable Energy Laboratory, University of Texas Austin,
-// Northwest Research Associates. Under the terms of Contract DE-NA0003525
-// with NTESS, the U.S. Government retains certain rights in this software.
-//
-// This software is released under the BSD 3-clause license. See LICENSE file
-// for more details.
+/*------------------------------------------------------------------------*/
+/*  Copyright 2019 National Renewable Energy Laboratory.                  */
+/*  This software is released under the license detailed                  */
+/*  in the file, LICENSE, which is located in the top-level Nalu          */
+/*  directory structure                                                   */
+/*------------------------------------------------------------------------*/
 
 #include "overset/AssembleOversetDecoupledAlgorithm.h"
 #include "overset/OversetManager.h"
@@ -33,13 +32,40 @@ void AssembleOversetDecoupledAlgorithm::execute()
   // Reset LHS/RHS for the overset constraint rows
   prepare_constraints();
 
+  const auto& fringeNodes = realm_.oversetManager_->fringeNodes_;
   const int numDof = eqSystem_->linsys_->numDof();
-  const auto& fringeNodes = realm_.oversetManager_->ngpFringeNodes_;
-  auto* coeffApplier = eqSystem_->linsys_->get_coeff_applier();
-  Kokkos::parallel_for(
-    fringeNodes.size(), KOKKOS_LAMBDA(const size_t& i) {
-      coeffApplier->resetRows(1, &fringeNodes(i), 0, numDof, 1.0, 0.0);
-    });
+  eqSystem_->linsys_->resetRows(fringeNodes, 0, numDof, 1.0, 0.0);
+
+#if 0
+  const int rank = NaluEnv::self().parallel_rank();
+  const int nDof = eqSystem_->linsys_->numDof();
+  const auto& bulk = realm_.bulk_data();
+
+  // RHS size is the same as number of DOFs
+  std::vector<double> lhs(nDof * nDof, 0.0);
+  std::vector<double> rhs(nDof, 0.0);
+  std::vector<int> scratchIds(nDof);
+  std::vector<double> scratchVals(nDof);
+  std::vector<stk::mesh::Entity> connected_nodes(1);
+
+  // Set diagonal values to 1.0
+  for (int i = 0; i < nDof; ++i)
+    lhs[i * nDof + i] = 1.0;
+
+  for (auto* oinfo: realm_.oversetManager_->oversetInfoVec_) {
+    auto node = oinfo->orphanNode_;
+    const int nodeRank = bulk.parallel_owner_rank(node);
+
+    // Only process nodes owned by this MPI rank
+    if (rank != nodeRank) continue;
+
+    // Assign the row for the fringe node
+    connected_nodes[0] = node;
+
+    // Don't use apply_coeff here as it checks for overset logic
+    eqSystem_->linsys_->sumInto(connected_nodes, scratchIds, scratchVals, rhs, lhs, __FILE__);
+  }
+#endif
 }
 
 }  // nalu

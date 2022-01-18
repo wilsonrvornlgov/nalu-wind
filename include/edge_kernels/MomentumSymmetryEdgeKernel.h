@@ -37,10 +37,10 @@ public:
     ElemDataRequests&,
     ElemDataRequests&);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FORCEINLINE_FUNCTION
   MomentumSymmetryEdgeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FORCEINLINE_FUNCTION
   virtual ~MomentumSymmetryEdgeKernel() = default;
 
   using Kernel::execute;
@@ -64,7 +64,6 @@ private:
 
   MasterElement* meFC_{nullptr};
   MasterElement* meSCS_{nullptr};
-  const double penaltyFactor_;
 };
 
 }  // nalu

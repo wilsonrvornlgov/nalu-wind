@@ -1,6 +1,5 @@
 
 #include "wind_energy/ABLForcingAlgorithm.h"
-#include "NaluParsing.h"
 #include "Realm.h"
 #include "xfer/Transfer.h"
 #include "xfer/Transfers.h"
@@ -20,9 +19,7 @@
 
 #include <stk_util/parallel/ParallelReduce.hpp>
 
-#ifdef NALU_USES_BOOST
 #include <boost/format.hpp>
-#endif
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -201,7 +198,6 @@ ABLForcingAlgorithm::initialize()
   }
 
   // Prepare output files to dump sources when computed during precursor phase
-  #ifdef NALU_USES_BOOST
   if (( NaluEnv::self().parallel_rank() == 0 ) &&
       ( momSrcType_ == COMPUTED )) {
     std::string uxname((boost::format(outFileFmt_)%"Ux").str());
@@ -227,7 +223,6 @@ ABLForcingAlgorithm::initialize()
     uyFile.close();
     uzFile.close();
   }
-  #endif
 }
 
 void
@@ -280,7 +275,6 @@ ABLForcingAlgorithm::compute_momentum_sources()
     }
   }
 
-  #ifdef NALU_USES_BOOST
   const int tcount = realm_.get_time_step_count();
   if (( NaluEnv::self().parallel_rank() == 0 ) &&
       ( momSrcType_ == COMPUTED ) &&
@@ -314,7 +308,6 @@ ABLForcingAlgorithm::compute_momentum_sources()
     uyFile.close();
     uzFile.close();
   }
-  #endif
 }
 
 void
@@ -339,7 +332,6 @@ ABLForcingAlgorithm::compute_temperature_sources()
     }
   }
 
-  #ifdef NALU_USES_BOOST
   const int tcount = realm_.get_time_step_count();
   if (( NaluEnv::self().parallel_rank() == 0 ) &&
       ( tempSrcType_ == COMPUTED ) &&
@@ -357,8 +349,6 @@ ABLForcingAlgorithm::compute_temperature_sources()
     tFile << std::endl;
     tFile.close();
   }
-  #endif
-
 }
 
 void

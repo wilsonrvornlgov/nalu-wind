@@ -16,7 +16,6 @@
 #include <Enums.h>
 #include <InitialConditions.h>
 #include <MaterialPropertys.h>
-#include <NaluParsedTypes.h>
 #include <NaluParsingHelper.h>
 #include <NaluEnv.h>
 
@@ -30,6 +29,111 @@
 
 namespace sierra {
 namespace nalu {
+
+// our data types
+struct Velocity {
+  double ux_, uy_, uz_;
+  Velocity()
+    : ux_(0.0), uy_(0.0), uz_(0.0)
+  {}
+};
+
+struct Coordinates {
+  double x_, y_, z_;
+  Coordinates()
+    : x_(0.0), y_(0.0), z_(0.0)
+  {}
+};
+
+struct Pressure {
+  double pressure_;
+  Pressure()
+    : pressure_(0.0)
+  {}
+};
+
+struct TurbKinEnergy {
+  double turbKinEnergy_;
+  TurbKinEnergy()
+    : turbKinEnergy_(0.0)
+  {}
+};
+
+struct SpecDissRate {
+  double specDissRate_;
+  SpecDissRate()
+    : specDissRate_(0.0)
+  {}
+};
+
+struct Temperature {
+  double temperature_;
+  Temperature()
+    : temperature_(0.0)
+  {}
+};
+
+struct MixtureFraction {
+  double mixFrac_;
+  MixtureFraction()
+    : mixFrac_(0.0)
+  {}
+};
+
+struct MassFraction {
+  std::vector<double> massFraction_;
+  MassFraction()
+  {}
+};
+
+struct Emissivity {
+  double emissivity_;
+  Emissivity()
+    : emissivity_(1.0)
+  {}
+};
+
+struct Irradiation {
+  double irradiation_;
+  Irradiation()
+    : irradiation_(1.0)
+  {}
+};
+
+struct Transmissivity {
+  double transmissivity_;
+  Transmissivity()
+    : transmissivity_(0.0)
+  {}
+};
+
+struct EnvironmentalT {
+  double environmentalT_;
+  EnvironmentalT()
+    : environmentalT_(298.0)
+  {}
+};
+
+struct ReferenceTemperature {
+  double referenceTemperature_;
+  ReferenceTemperature()
+    : referenceTemperature_(298.0)
+  {}
+};
+
+struct HeatTransferCoefficient {
+  double heatTransferCoefficient_;
+  HeatTransferCoefficient()
+    : heatTransferCoefficient_(0.0)
+  {}
+};
+
+struct RobinCouplingParameter {
+  double robinCouplingParameter_;
+  RobinCouplingParameter()
+    : robinCouplingParameter_(0.0)
+  {}
+};
 
 // base class
 struct UserData 
@@ -47,6 +151,32 @@ struct UserData
 UserData() : tempSpec_(false), externalData_(false) {}
 };
 
+struct NormalHeatFlux {
+  double qn_;
+  NormalHeatFlux()
+    : qn_(0.0)
+  {}
+};
+
+struct NormalTemperatureGradient {
+  double tempGradN_;
+  NormalTemperatureGradient()
+    : tempGradN_(0.0)
+  {}
+};
+
+struct RoughnessHeight {
+  double z0_;
+  RoughnessHeight()
+    :  z0_(0.1)
+  {}
+};
+
+struct MasterSlave {
+  std::string master_;
+  std::string slave_;
+  MasterSlave() {}
+};
 
 // packaged
 struct WallUserData : public UserData {
@@ -55,38 +185,43 @@ struct WallUserData : public UserData {
   TurbKinEnergy tke_;
   MixtureFraction mixFrac_;
   MassFraction massFraction_;
+  Emissivity emissivity_;
+  Irradiation irradiation_;
+  Transmissivity transmissivity_;
+  EnvironmentalT environmentalT_;
   NormalHeatFlux q_;
   ReferenceTemperature referenceTemperature_;
+  HeatTransferCoefficient heatTransferCoefficient_;
+  RobinCouplingParameter robinCouplingParameter_;
   Pressure pressure_;
   unsigned gravityComponent_;
   RoughnessHeight z0_;
-  double uRef_;
-  double zRef_;
+  
   
   bool isAdiabatic_;
-  bool isNoSlip_;
   bool heatFluxSpec_;
   bool isInterface_;
   bool refTempSpec_;
+  bool htcSpec_;
+  bool robinParameterSpec_;
+  bool irradSpec_;
+  bool emissSpec_;
 
-  bool RANSAblBcApproach_;
   bool wallFunctionApproach_;
   bool ablWallFunctionApproach_;
-  YAML::Node ablWallFunctionNode_;
 
   bool isFsiInterface_;
 
   WallUserData()
     : UserData(),
       gravityComponent_(3),
-      uRef_(6.6),
-      zRef_(90.0),
       isAdiabatic_(false),
-      isNoSlip_(false),
       heatFluxSpec_(false),
       isInterface_(false),
       refTempSpec_(false),
-      RANSAblBcApproach_(false),
+      htcSpec_(false),
+      robinParameterSpec_(false),
+      irradSpec_(false),
       wallFunctionApproach_(false),
       ablWallFunctionApproach_(false),
       isFsiInterface_(false) {}    
@@ -98,17 +233,15 @@ struct InflowUserData : public UserData {
   SpecDissRate sdr_;
   MixtureFraction mixFrac_;
   MassFraction massFraction_;
-  GammaInf gamma_;
  
   bool uSpec_;
   bool tkeSpec_;
   bool sdrSpec_;
   bool mixFracSpec_;
   bool massFractionSpec_;
-  bool gammaSpec_;
   InflowUserData()
     : UserData(),
-    uSpec_(false), tkeSpec_(false), sdrSpec_(false), mixFracSpec_(false), massFractionSpec_(false), gammaSpec_(false)
+    uSpec_(false), tkeSpec_(false), sdrSpec_(false), mixFracSpec_(false), massFractionSpec_(false)
   {}
 };
 
@@ -119,7 +252,6 @@ struct OpenUserData : public UserData {
   SpecDissRate sdr_;
   MixtureFraction mixFrac_;
   MassFraction massFraction_;
-  GammaOpen gamma_;
  
   bool uSpec_;
   bool pSpec_;
@@ -127,15 +259,10 @@ struct OpenUserData : public UserData {
   bool sdrSpec_;
   bool mixFracSpec_;
   bool massFractionSpec_;
-  bool totalP_;
-  bool gammaSpec_;
-  EntrainmentMethod entrainMethod_;
 
   OpenUserData()
     : UserData(),
-      uSpec_(false), pSpec_(false), tkeSpec_(false), 
-      sdrSpec_(false), mixFracSpec_(false), massFractionSpec_(false), 
-      totalP_{false}, gammaSpec_(false), entrainMethod_{EntrainmentMethod::COMPUTED}
+      uSpec_(false), pSpec_(false), tkeSpec_(false), sdrSpec_(false), mixFracSpec_(false), massFractionSpec_(false)
   {}
 };
 
@@ -315,35 +442,13 @@ struct UserFunctionInitialConditionData : public InitialCondition {
   std::map<std::string, std::vector<double> > functionParams_;
 };
 
-inline bool string_represents_positive_integer(std::string v) {
-  return !v.empty () && v.find_first_not_of("0123456789") == std::string::npos;
-} 
-
-template <typename T>
-typename std::enable_if<std::is_integral<T>::value, T>::type get_yaml_value(const YAML::Node& v) {
-  // yaml will parse inputs with leading zeros as octals if
-  // the number is an octal, e.g. max_itertions: 0010 is
-  // equivalent to max_iterations: 8.
-  // this works around that to have 0010 equivalent to 10
-  if (string_represents_positive_integer(v.template as<std::string>())) {
-    return std::stoi(v.template as<std::string>());
-  }
-  else {
-    return v.template as<T>();
-  }
-}
-
-template <typename T>
-typename std::enable_if<!std::is_integral<T>::value, T>::type get_yaml_value(const YAML::Node& v) {
-  return v.template as<T>();
-}
-
 /// Set @param result if the @param key is present in the @param node, else set it to the given default value
 template<typename T>
 void get_if_present(const YAML::Node & node, const std::string& key, T& result, const T& default_if_not_present = T())
 {
   if (node[key]) {
-    result = get_yaml_value<T>(node[key]);
+    const YAML::Node value = node[key];
+    result = value.as<T>();
   }
   else {
     result = default_if_not_present;
@@ -355,7 +460,8 @@ template<typename T>
 void get_if_present_no_default(const YAML::Node & node, const std::string& key, T& result)
 {
   if (node[key]) {
-    result = get_yaml_value<T>(node[key]);
+    const YAML::Node value = node[key];
+    result = value.as<T>();
   }
 }
 
@@ -364,7 +470,8 @@ template<typename T>
 void get_required(const YAML::Node & node, const std::string& key, T& result)
 {
   if (node[key]) {
-    result = get_yaml_value<T>(node[key]);
+    const YAML::Node value = node[key];
+    result = value.as<T>();
   }
   else    {
     if (!NaluEnv::self().parallel_rank()) {
@@ -449,10 +556,6 @@ template<> struct convert<sierra::nalu::SpecDissRate> {
   static bool decode(const Node& node, sierra::nalu::SpecDissRate& rhs) ;
 };
 
-template<> struct convert<sierra::nalu::GammaInf> {
-  static bool decode(const Node& node, sierra::nalu::GammaInf& rhs) ;
-};
-
 template<> struct convert<sierra::nalu::Temperature> {
   static bool decode(const Node& node, sierra::nalu::Temperature& rhs) ;
 };
@@ -465,8 +568,32 @@ template<> struct convert<sierra::nalu::MassFraction> {
   static bool decode(const Node& node, sierra::nalu::MassFraction& rhs) ;
 };
 
+template<> struct convert<sierra::nalu::Emissivity> {
+  static bool decode(const Node& node, sierra::nalu::Emissivity& rhs) ;
+};
+
+template<> struct convert<sierra::nalu::Irradiation> {
+  static bool decode(const Node& node, sierra::nalu::Irradiation& rhs) ;
+};
+
+template<> struct convert<sierra::nalu::Transmissivity> {
+  static bool decode(const Node& node, sierra::nalu::Transmissivity& rhs) ;
+};
+
+template<> struct convert<sierra::nalu::EnvironmentalT> {
+  static bool decode(const Node& node, sierra::nalu::EnvironmentalT& rhs) ;
+};
+
 template<> struct convert<sierra::nalu::ReferenceTemperature> {
   static bool decode(const Node& node, sierra::nalu::ReferenceTemperature& rhs) ;
+};
+
+template<> struct convert<sierra::nalu::HeatTransferCoefficient> {
+  static bool decode(const Node& node, sierra::nalu::HeatTransferCoefficient& rhs) ;
+};
+
+template<> struct convert<sierra::nalu::RobinCouplingParameter> {
+  static bool decode(const Node& node, sierra::nalu::RobinCouplingParameter& rhs) ;
 };
 
 template<> struct convert<sierra::nalu::UserData> {

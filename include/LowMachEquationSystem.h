@@ -16,15 +16,13 @@
 
 #include "EquationSystem.h"
 #include "FieldTypeDef.h"
-#include "NaluParsedTypes.h"
-#include "AMSAlgDriver.h"
+#include "NaluParsing.h"
+#include "TAMSAlgDriver.h"
 
 #include "ngp_algorithms/NodalGradAlgDriver.h"
 #include "ngp_algorithms/WallFricVelAlgDriver.h"
 #include "ngp_algorithms/EffDiffFluxCoeffAlg.h"
 #include "ngp_algorithms/CourantReAlgDriver.h"
-
-#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace stk{
 struct topology;
@@ -41,7 +39,6 @@ class LinearSystem;
 class ProjectedNodalGradientEquationSystem;
 class SurfaceForceAndMomentAlgorithmDriver;
 class MdotAlgDriver;
-class NgpAlgDriver;
 
 /** Low-Mach formulation of the Navier-Stokes Equations
  *
@@ -73,6 +70,9 @@ public:
     stk::mesh::Part *part,
     const stk::topology &theTopo);
 
+  virtual void register_interior_algorithm(
+    stk::mesh::Part *part);
+
   virtual void register_open_bc(
     stk::mesh::Part *part,
     const stk::topology &partTopo,
@@ -89,14 +89,13 @@ public:
 
   virtual void pre_iter_work();
   virtual void solve_and_update();
+  virtual void post_adapt_work();
 
   virtual void predict_state();
 
   void project_nodal_velocity();
 
   void post_converged_work();
-
-  virtual void post_iter_work();
 
   const bool elementContinuityEqs_; /* allow for mixed element/edge for continuity */
   MomentumEquationSystem *momentumEqSys_;
@@ -108,6 +107,7 @@ public:
   VectorFieldType *edgeAreaVec_;
 
   SurfaceForceAndMomentAlgorithmDriver *surfaceForceAndMomentAlgDriver_;
+
   std::vector<int> xyBCType_;
 
   bool isInit_;
@@ -197,7 +197,7 @@ public:
 
   virtual void save_diagonal_term(
     unsigned,
-    const stk::mesh::NgpMesh::ConnectedNodes&,
+    const ngp::Mesh::ConnectedNodes&,
     const SharedMemView<const double**,DeviceShmem>&
   ) override;
 
@@ -217,24 +217,18 @@ public:
   ScalarFieldType *visc_;
   ScalarFieldType *tvisc_;
   ScalarFieldType *evisc_;
-  ScalarFieldType *iddesRansIndicator_;
 
   VectorNodalGradAlgDriver nodalGradAlgDriver_;
   WallFricVelAlgDriver wallFuncAlgDriver_;
-  NgpAlgDriver dynPressAlgDriver_;
   std::unique_ptr<EffDiffFluxCoeffAlg> diffFluxCoeffAlg_{nullptr};
   std::unique_ptr<Algorithm> tviscAlg_{nullptr};
-  std::unique_ptr<Algorithm> pecletAlg_{nullptr};
-  std::unique_ptr<Algorithm> ablWallNodeMask_ {nullptr};
 
   CourantReAlgDriver cflReAlgDriver_;
-  std::unique_ptr<AMSAlgDriver> AMSAlgDriver_{nullptr};
+  std::unique_ptr<TAMSAlgDriver> TAMSAlgDriver_{nullptr};
 
   ProjectedNodalGradientEquationSystem *projectedNodalGradEqs_;
 
   double firstPNGResidual_;
-
-  bool RANSAblBcApproach_{false};
 
   // saved of mesh parts that are not to be projected
   std::vector<stk::mesh::Part *> notProjectedPart_;

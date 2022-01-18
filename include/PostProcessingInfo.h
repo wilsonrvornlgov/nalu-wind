@@ -12,7 +12,7 @@
 #ifndef PostProcessingInfo_h
 #define PostProcessingInfo_h
 
-#include <NaluParsedTypes.h>
+#include <NaluParsing.h>
 
 #include <string>
 #include <vector>

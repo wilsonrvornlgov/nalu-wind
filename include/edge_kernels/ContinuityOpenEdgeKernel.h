@@ -34,10 +34,10 @@ public:
     ElemDataRequests&,
     ElemDataRequests&);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FORCEINLINE_FUNCTION
   ContinuityOpenEdgeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_INLINE_FUNCTION
   virtual ~ContinuityOpenEdgeKernel() = default;
 
   virtual void setup(const TimeIntegrator&);
@@ -64,7 +64,6 @@ private:
   const unsigned pressureBC_ {stk::mesh::InvalidOrdinal};
   const unsigned Gpdx_ {stk::mesh::InvalidOrdinal};
   const unsigned Udiag_ {stk::mesh::InvalidOrdinal};
-  const unsigned dynPress_ {stk::mesh::InvalidOrdinal};
 
   DoubleType tauScale_;
   DoubleType mdotCorr_;

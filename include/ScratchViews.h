@@ -16,7 +16,6 @@
 #include <stk_mesh/base/FieldBase.hpp>
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/BulkData.hpp>
-#include <stk_mesh/base/NgpMesh.hpp>
 
 #include <ElemDataRequestsGPU.h>
 #include <master_element/MasterElement.h>
@@ -80,10 +79,10 @@ class MasterElementViews
 public:
   typedef T value_type;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   MasterElementViews() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~MasterElementViews() = default;
 
   KOKKOS_FUNCTION
@@ -196,7 +195,7 @@ int create_needed_field_views(const TEAMHANDLETYPE& team,
       }
     }
     else {
-      NGP_ThrowRequireMsg(false,"Unknown stk-rank");
+      ThrowRequireMsg(false,"Unknown stk-rank" << fieldEntityRank);
     }
   }
 
@@ -215,7 +214,7 @@ public:
                int nodesPerEntity,
                const ElemDataRequestsGPU& dataNeeded);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   ~ScratchViews() = default;
 
   inline
@@ -255,7 +254,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   int total_bytes() const { return num_bytes_required; }
 
-  stk::mesh::NgpMesh::ConnectedNodes elemNodes;
+  ngp::Mesh::ConnectedNodes elemNodes;
 
   KOKKOS_INLINE_FUNCTION
         MultiDimViews<T,TEAMHANDLETYPE,SHMEM>& get_field_views()       { return fieldViews; }
@@ -842,7 +841,7 @@ int get_num_scalars_pre_req_data(
 template<typename T>
 KOKKOS_FUNCTION
 void fill_pre_req_data(const ElemDataRequestsGPU& dataNeeded,
-                       const stk::mesh::NgpMesh& ngpMesh,
+                       const ngp::Mesh& ngpMesh,
                        stk::mesh::EntityRank entityRank,
                        stk::mesh::Entity elem,
                        ScratchViews<T,DeviceTeamHandleType,DeviceShmem>& prereqData);

@@ -16,12 +16,6 @@
 #include "ngp_utils/NgpFieldOps.h"
 #include "ngp_utils/NgpReduceUtils.h"
 #include "ngp_utils/NgpReducers.h"
-#include "ngp_utils/NgpFieldManager.h"
-#include "master_element/Hex8CVFEM.h"
-#include "master_element/Quad43DCVFEM.h"
-#include "stk_mesh/base/NgpMesh.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/GetNgpField.hpp"
 
 #include <cmath>
 
@@ -82,13 +76,13 @@ void basic_node_loop(
   const stk::mesh::BulkData& bulk,
   ScalarFieldType& pressure)
 {
-  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>;
   const double presSet = 4.0;
 
   const auto& meta = bulk.mesh_meta_data();
   stk::mesh::Selector sel = meta.universal_part();
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpPressure = stk::mesh::get_updated_ngp_field<double>(pressure);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpPressure(bulk, pressure);
 
   sierra::nalu::nalu_ngp::run_entity_algorithm(
     "unittest_basic_node_loop",
@@ -117,14 +111,14 @@ void basic_node_reduce(
   const stk::mesh::BulkData& bulk,
   ScalarFieldType& pressure)
 {
-  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>;
   const double presSet = 4.0;
 
   stk::mesh::field_fill(presSet, pressure);
   const auto& meta = bulk.mesh_meta_data();
   stk::mesh::Selector sel = meta.universal_part();
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpPressure = stk::mesh::get_updated_ngp_field<double>(pressure);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpPressure(bulk, pressure);
 
 
   double reduceVal = 0.0;
@@ -164,13 +158,13 @@ void basic_node_reduce_minmax(
   const double minGold,
   const double maxGold)
 {
-  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>;
 
   const auto& meta = bulk.mesh_meta_data();
   const auto& coords =  meta.coordinate_field();
   stk::mesh::Selector sel = meta.universal_part();
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpCoords = stk::mesh::get_updated_ngp_field<double>(*coords);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpCoords(bulk, *coords);
 
   using value_type = Kokkos::Max<double>::value_type;
   value_type max;
@@ -203,13 +197,13 @@ void basic_node_reduce_minmax_alt(
   const double minGold,
   const double maxGold)
 {
-  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>;
 
   const auto& meta = bulk.mesh_meta_data();
   const auto& coords =  meta.coordinate_field();
   stk::mesh::Selector sel = meta.universal_part();
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpCoords = stk::mesh::get_updated_ngp_field<double>(*coords);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpCoords(bulk, *coords);
 
   using value_type = Kokkos::MinMax<double>::value_type;
   value_type minmax;
@@ -233,15 +227,15 @@ void basic_node_reduce_minmaxsum(
   const double maxGold,
   const double sumGold)
 {
-  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>;
   using MinMaxSum = sierra::nalu::nalu_ngp::MinMaxSum<double>;
   using value_type = typename MinMaxSum::value_type;
 
   const auto& meta = bulk.mesh_meta_data();
   const auto& coords =  meta.coordinate_field();
   stk::mesh::Selector sel = meta.universal_part();
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpCoords = stk::mesh::get_updated_ngp_field<double>(*coords);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpCoords(bulk, *coords);
 
   value_type minmaxsum;
   MinMaxSum reducer(minmaxsum);
@@ -264,14 +258,14 @@ void
 basic_node_reduce_array(
   const stk::mesh::BulkData& bulk, ScalarFieldType& pressure, int num_nodes)
 {
-  using MeshIndex = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
+  using MeshIndex = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
   const double presSet = 4.0;
 
   stk::mesh::field_fill(presSet, pressure);
   const auto& meta = bulk.mesh_meta_data();
   stk::mesh::Selector sel = meta.universal_part();
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpPressure = stk::mesh::get_updated_ngp_field<double>(pressure);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpPressure(bulk, pressure);
 
   using value_type = Kokkos::Sum<sierra::nalu::nalu_ngp::ArrayDbl2>::value_type;
   value_type lsum;
@@ -298,9 +292,9 @@ void basic_elem_loop(
   const double flowRate = 4.0;
   const double presSet = 10.0;
 
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpMassFlowRate = stk::mesh::get_updated_ngp_field<double>(massFlowRate);
-  stk::mesh::NgpField<double>& ngpPressure = stk::mesh::get_updated_ngp_field<double>(pressure);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpMassFlowRate(bulk, massFlowRate);
+  ngp::Field<double> ngpPressure(bulk, pressure);
 
   const auto& meta = bulk.mesh_meta_data();
   stk::mesh::Selector sel = meta.universal_part();
@@ -308,7 +302,7 @@ void basic_elem_loop(
   sierra::nalu::nalu_ngp::run_elem_algorithm(
     "unittest_basic_elem_loop",
     ngpMesh, stk::topology::ELEMENT_RANK, sel,
-    KOKKOS_LAMBDA(const sierra::nalu::nalu_ngp::EntityInfo<stk::mesh::NgpMesh>& einfo) {
+    KOKKOS_LAMBDA(const sierra::nalu::nalu_ngp::EntityInfo<ngp::Mesh>& einfo) {
       ngpMassFlowRate.get(einfo.meshIdx, 0) = flowRate;
 
       const auto& nodes = einfo.entityNodes;
@@ -353,9 +347,9 @@ void basic_edge_loop(
   const double flowRate = 4.0;
   const double presSet = 10.0;
 
-  stk::mesh::NgpMesh ngpMesh(bulk);
-  stk::mesh::NgpField<double>& ngpMassFlowRate = stk::mesh::get_updated_ngp_field<double>(mdotEdge);
-  stk::mesh::NgpField<double>& ngpPressure = stk::mesh::get_updated_ngp_field<double>(pressure);
+  ngp::Mesh ngpMesh(bulk);
+  ngp::Field<double> ngpMassFlowRate(bulk, mdotEdge);
+  ngp::Field<double> ngpPressure(bulk, pressure);
 
   const auto& meta = bulk.mesh_meta_data();
   stk::mesh::Selector sel = meta.universal_part();
@@ -363,7 +357,7 @@ void basic_edge_loop(
   sierra::nalu::nalu_ngp::run_edge_algorithm(
     "unittest_basic_edge_loop",
     ngpMesh, sel,
-    KOKKOS_LAMBDA(const sierra::nalu::nalu_ngp::EntityInfo<stk::mesh::NgpMesh>& einfo) {
+    KOKKOS_LAMBDA(const sierra::nalu::nalu_ngp::EntityInfo<ngp::Mesh>& einfo) {
       ngpMassFlowRate.get(einfo.meshIdx, 0) = flowRate;
 
       const auto& nodes = einfo.entityNodes;
@@ -371,11 +365,6 @@ void basic_edge_loop(
       for (int i=0; i < numNodes; ++i)
         ngpPressure.get(ngpMesh, nodes[i], 0) = presSet;
     });
-
-  ngpMassFlowRate.modify_on_device();
-  ngpMassFlowRate.sync_to_host();
-  ngpPressure.modify_on_device();
-  ngpPressure.sync_to_host();
 
   {
     const auto& edgeBuckets = bulk.get_buckets(stk::topology::EDGE_RANK,  sel);
@@ -404,9 +393,9 @@ void elem_loop_scratch_views(
   ScalarFieldType& pressure,
   VectorFieldType& velocity)
 {
-  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>;
   using Hex8Traits = sierra::nalu::AlgTraitsHex8;
-  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
+  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
   typedef Kokkos::DualView<double*, Kokkos::LayoutRight, sierra::nalu::DeviceSpace> DoubleTypeView;
 
   const auto& meta = bulk.mesh_meta_data();
@@ -507,9 +496,9 @@ void calc_mdot_elem_loop(
   VectorFieldType& velocity,
   GenericFieldType& massFlowRate)
 {
-  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>;
   using Hex8Traits = sierra::nalu::AlgTraitsHex8;
-  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
+  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
 
   const auto& meta = bulk.mesh_meta_data();
   sierra::nalu::ElemDataRequests dataReq(meta);
@@ -533,7 +522,7 @@ void calc_mdot_elem_loop(
   const auto mdotID = massFlowRate.mesh_meta_data_ordinal();
   const auto ngpMesh = meshInfo.ngp_mesh();
   const auto& fieldMgr = meshInfo.ngp_field_manager();
-  stk::mesh::NgpField<double> ngpMdot = fieldMgr.get_field<double>(mdotID);
+  ngp::Field<double> ngpMdot = fieldMgr.get_field<double>(mdotID);
   // SIMD Element field operation handler
   const auto mdotOps = sierra::nalu::nalu_ngp::simd_elem_field_updater(
     ngpMesh, ngpMdot);
@@ -594,9 +583,9 @@ void basic_face_elem_loop(
   ScalarFieldType& wallArea,
   ScalarFieldType& wallNormDist)
 {
-  using MeshIndex = sierra::nalu::nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex;
+  using MeshIndex = sierra::nalu::nalu_ngp::NGPMeshTraits<ngp::Mesh>::MeshIndex;
   using FaceTraits = sierra::nalu::AlgTraitsQuad4Hex8;
-  using FaceSimdData = sierra::nalu::nalu_ngp::FaceElemSimdData<stk::mesh::NgpMesh>;
+  using FaceSimdData = sierra::nalu::nalu_ngp::FaceElemSimdData<ngp::Mesh>;
   const auto& meta = bulk.mesh_meta_data();
   const int ndim = meta.spatial_dimension();
 
@@ -704,7 +693,7 @@ void elem_loop_par_reduce(
   ScalarFieldType& pressure)
 {
   using Hex8Traits = sierra::nalu::AlgTraitsHex8;
-  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
+  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
   const double presSet = 4.0;
 
   stk::mesh::field_fill(presSet, pressure);
@@ -762,7 +751,7 @@ void basic_face_elem_reduce(
   const GenericFieldType& exposedArea)
 {
   using FaceTraits = sierra::nalu::AlgTraitsQuad4Hex8;
-  using FaceSimdData = sierra::nalu::nalu_ngp::FaceElemSimdData<stk::mesh::NgpMesh>;
+  using FaceSimdData = sierra::nalu::nalu_ngp::FaceElemSimdData<ngp::Mesh>;
   const auto& meta = bulk.mesh_meta_data();
   const int ndim = meta.spatial_dimension();
 

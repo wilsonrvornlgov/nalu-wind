@@ -39,7 +39,7 @@ namespace nalu{
     int nNodes = basis.num_nodes();
     constexpr int dim = 3;
     std::array<double, dim> guess = initialGuess;
-    std::array<double, dim> delta = { {0.0, 0.0, 0.0} };
+    std::array<double, dim> delta;
     int iter = 0;
 
     do {
@@ -105,7 +105,7 @@ namespace nalu{
     int nNodes = basis.num_nodes();
     constexpr int dim = 2;
     std::array<double, dim> guess = initialGuess;
-    std::array<double, dim> delta = { {0.0, 0.0} };
+    std::array<double, dim> delta;
     int iter = 0;
 
     do {

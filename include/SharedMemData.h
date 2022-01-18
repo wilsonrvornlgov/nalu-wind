@@ -13,7 +13,6 @@
 #define SharedMemData_h
 
 #include <stk_mesh/base/BulkData.hpp>
-#include <stk_mesh/base/NgpMesh.hpp>
 
 #include <KokkosInterface.h>
 #include <SimdInterface.h>
@@ -51,10 +50,10 @@ struct SharedMemData {
         simdPrereqData.fill_static_meviews(dataNeededByKernels);
     }
 
-    KOKKOS_DEFAULTED_FUNCTION
+    KOKKOS_FUNCTION
     ~SharedMemData() = default;
 
-    stk::mesh::NgpMesh::ConnectedNodes ngpElemNodes[simdLen];
+    ngp::Mesh::ConnectedNodes ngpElemNodes[simdLen];
     int numSimdElems;
 #ifdef KOKKOS_ENABLE_CUDA
     ScratchViews<DoubleType,TEAMHANDLETYPE,SHMEM>* prereqData[1];
@@ -105,10 +104,10 @@ struct SharedMemData_FaceElem {
         simdElemViews.fill_static_meviews(elemDataNeeded);
     }
 
-    KOKKOS_DEFAULTED_FUNCTION
+    KOKKOS_FUNCTION
     ~SharedMemData_FaceElem() = default;
 
-    stk::mesh::NgpMesh::ConnectedNodes ngpConnectedNodes[simdLen];
+    ngp::Mesh::ConnectedNodes ngpConnectedNodes[simdLen];
     int numSimdFaces;
     int elemFaceOrdinal;
 #ifdef KOKKOS_ENABLE_CUDA
@@ -142,7 +141,7 @@ struct SharedMemData_Edge {
     sortPermutation = get_shmem_view_1D<int,TEAMHANDLETYPE,SHMEM>(team, rhsSize);
   }
 
-  stk::mesh::NgpMesh::ConnectedNodes ngpElemNodes;
+  ngp::Mesh::ConnectedNodes ngpElemNodes;
   SharedMemView<double*,SHMEM> rhs;
   SharedMemView<double**,SHMEM> lhs;
 

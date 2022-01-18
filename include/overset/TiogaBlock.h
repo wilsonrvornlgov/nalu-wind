@@ -9,7 +9,6 @@
 
 #include "overset/TiogaOptions.h"
 #include "overset/OversetFieldData.h"
-#include "overset/OversetNGP.h"
 #include "yaml-cpp/yaml.h"
 
 #include <vector>
@@ -25,85 +24,6 @@ namespace tioga_nalu {
 typedef stk::mesh::Field<double, stk::mesh::Cartesian> VectorFieldType;
 typedef stk::mesh::Field<double> ScalarFieldType;
 typedef stk::mesh::Field<int> ScalarIntFieldType;
-
-/** Data representing an unstructured mesh block
- */
-struct NgpTiogaBlock
-{
-  /** Number of cell types supported by TIOGA
-   *
-   *  Currently it supports hex, tet, wedge, and pyramids
-   */
-  static constexpr int max_vertex_types = 4;
-
-  //! Coordinates of the nodes for this mesh (size = 3 * num_nodes)
-  OversetArrayType<double*> xyz_;
-
-  //! Nodal resolutions used for resolution check (size = num_nodes)
-  OversetArrayType<double*> node_res_;
-
-  //! Cell resolutions used for resolution checks (size = num_elements)
-  OversetArrayType<double*> cell_res_;
-
-  //! IBLANK array populated after overset connectivity (size = num_nodes)
-  OversetArrayType<int*> iblank_;
-
-  //! IBLANK array populated after overset connectivity (size = num_nodes)
-  OversetArrayType<int*> iblank_cell_;
-
-  /** Indices of the nodes that define the wall boundaries
-   *
-   *  The indices are 1-based (Fortran style)
-   */
-  OversetArrayType<int*> wallIDs_;
-
-  /** Indices of the nodes that define the overset boundaries
-   *
-   *  The indices are 1-based (Fortran style)
-   */
-  OversetArrayType<int*> ovsetIDs_;
-
-  /** Array indicating the number of vertices in the element topologies
-   *
-   *  The number of vertices indicate the element type, i.e., `8 = hex, 6 =
-   *  wedge, 5 = pyramid, 4 = tet`. No other values are allowed.
-   *
-   *  For a mesh containing solely hex elements, this array just contains one
-   *  entry: `{8}`.
-   */
-  OversetArrayType<int*> num_verts_;
-
-  /** Array indicating the number of elements for each element topology.
-   *
-   *  This array is the same size as `num_verts_`.
-   */
-  OversetArrayType<int*> num_cells_;
-
-  /** Element connectivity information
-   *
-   *  Pointers to arrays containing connectivity information for the elements.
-   *  Ony num_vertex_types entries are filled. Each array has (num_vertices *
-   *  num_cells) entries for individual topologies.
-   */
-  OversetArrayType<int*> connect_[max_vertex_types];
-
-  //! TIOGA index lookup using local entity index. TIOGA uses 1-based indexing,
-  //! so the first entry (node/element) has the index set to 1. This must be
-  //! taken into account when dereferencing entries in TIOGA data arrays.
-  OversetArrayType<int*> eid_map_;
-
-  //! The global STK identifier for this node. Used to identify shared nodes
-  //! across domain partitions.
-  OversetArrayType<stk::mesh::EntityId*> node_gid_;
-
-  //! The global STK identifier for an element. Used to identify donors on a
-  //! different MPI partition at the receptor MPI ranks. Not necessary if STK
-  //! ghosting is not used.
-  OversetArrayType<stk::mesh::EntityId*> cell_gid_;
-
-  //! Solution array used to exchange data between meshes through TIOGA
-  OversetArrayType<double*> qsol_;
-};
 
 /**
  * Interface to convert STK Mesh Part(s) to TIOGA blocks.
@@ -160,12 +80,6 @@ public:
    */
   void update_element_volumes();
 
-  /** Adjust resolutions of mandatory fringe entities
-   */
-  void adjust_cell_resolutions();
-
-  void adjust_node_resolutions();
-
   /** Register this block with TIOGA
    *
    *  Wrapper method to handle mesh block registration using TIOGA API. In
@@ -208,6 +122,20 @@ public:
     const std::vector<sierra::nalu::OversetFieldData>&);
 
   void update_solution(const sierra::nalu::OversetFieldData&);
+
+  // Accessors
+
+  //! STK Global ID for all the nodes comprising this mesh block
+  inline const std::vector<stk::mesh::EntityId>& node_id_map() const
+  { return nodeid_map_; }
+
+  //! STK Global ID for all the elements comprising this mesh block
+  inline const std::vector<stk::mesh::EntityId>& elem_id_map() const
+  { return elemid_map_; }
+
+  //! IBLANK mask indicating whether the element is active or inactive
+  inline const std::vector<int>& iblank_cell() const
+  { return iblank_cell_; }
 
   //! Return the block name for this mesh
   const std::string& block_name() const { return block_name_; }
@@ -292,8 +220,39 @@ private:
   //! Overset BC parts
   stk::mesh::PartVector ovsetParts_;
 
-  //! Data representing this unstructured block
-  NgpTiogaBlock bdata_;
+  //! Coordinates for this mesh block in TIOGA format
+  std::vector<double> xyz_;
+
+  //! Node IBLANK information from TIOGA
+  std::vector<int> iblank_;
+
+  //! Element IBLANK information from TIOGA
+  std::vector<int> iblank_cell_;
+
+  /** Lookup table for node ID to local index in xyz_ array
+   *
+   *  Used to populate the wall and overset BC arrays as well as the overset
+   *  connectivity information.
+   */
+  std::map<stk::mesh::EntityId, size_t> node_map_;
+
+  //! Wall BC index array
+  std::vector<int> wallIDs_;
+
+  //! Overset BC index array
+  std::vector<int> ovsetIDs_;
+
+  //! Number of vertices per topology type found
+  std::vector<int> num_verts_;
+
+  //! Number of cells per topology in this mesh
+  std::vector<int> num_cells_;
+
+  /** Connectivity data structure
+   *
+   *  A two-dimensional list of size (num_elems, num_elems * nodes_per_elem)
+   */
+  std::vector<std::vector<int>> connect_;
 
   /** Connectivity map.
    *
@@ -307,8 +266,23 @@ private:
    */
   int** tioga_conn_{nullptr};
 
+  //! STK Global ID for Nodes
+  std::vector<stk::mesh::EntityId> nodeid_map_;
+
+  //! STK Global ID for elements
+  std::vector<stk::mesh::EntityId> elemid_map_;
+
   //! Receptor information for this mesh block
   std::vector<int> receptor_info_;
+
+  //! User-specified node resolution
+  std::vector<double> node_res_;
+
+  //! User-specified cell resolution
+  std::vector<double> cell_res_;
+
+  //! Field data
+  std::vector<double> field_data_;
 
   //! Name of coordinates Field
   std::string coords_name_;
@@ -334,20 +308,6 @@ private:
   //! Flag to check if we are are already initialized
   bool is_init_ { true };
 
-public:
-  // Accessors
-
-  //! STK Global ID for all the nodes comprising this mesh block
-  inline auto node_id_map() const -> decltype(bdata_.node_gid_.h_view)
-  { return bdata_.node_gid_.h_view; }
-
-  //! STK Global ID for all the elements comprising this mesh block
-  inline auto elem_id_map() const -> decltype(bdata_.cell_gid_.h_view)
-  { return bdata_.cell_gid_.h_view; }
-
-  //! IBLANK mask indicating whether the element is active or inactive
-  inline auto iblank_cell() const -> decltype(bdata_.iblank_cell_.h_view)
-  { return bdata_.iblank_cell_.h_view; }
 };
 
 } // namespace tioga

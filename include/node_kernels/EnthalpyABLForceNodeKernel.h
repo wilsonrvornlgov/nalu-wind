@@ -15,9 +15,7 @@
 #include "wind_energy/ABLSrcInterp.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -31,9 +29,10 @@ public:
     const stk::mesh::BulkData&,
     const SolutionOptions&);
 
-  EnthalpyABLForceNodeKernel() = delete;
+  KOKKOS_FUNCTION
+  EnthalpyABLForceNodeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~EnthalpyABLForceNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -45,8 +44,8 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  stk::mesh::NgpField<double> coordinates_;
-  stk::mesh::NgpField<double> dualNodalVolume_;
+  ngp::Field<double> coordinates_;
+  ngp::Field<double> dualNodalVolume_;
 
   ABLScalarInterpolator ablSrc_;
 

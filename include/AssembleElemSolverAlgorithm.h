@@ -20,8 +20,6 @@
 #include <SharedMemData.h>
 #include<CopyAndInterleave.h>
 #include<FieldTypeDef.h>
-#include <stk_mesh/base/NgpMesh.hpp>
-#include <ngp_utils/NgpFieldManager.h>
 
 namespace stk {
 namespace mesh {
@@ -56,8 +54,8 @@ public:
     const int lhsSize = rhsSize_*rhsSize_;
     const int scratchIdsSize = rhsSize_;
 
-    const stk::mesh::NgpMesh& ngpMesh = realm_.ngp_mesh();
-    const nalu_ngp::FieldManager& fieldMgr = realm_.ngp_field_manager();
+    const ngp::Mesh& ngpMesh = realm_.ngp_mesh();
+    const ngp::FieldManager& fieldMgr = realm_.ngp_field_manager();
     ElemDataRequestsGPU dataNeededNGP(
       fieldMgr, dataNeededByKernels_, meta_data.get_fields().size());
 
@@ -74,7 +72,7 @@ public:
                                        !realm_.get_inactive_selector();
 
     const auto& elem_buckets =
-      stk::mesh::get_bucket_ids(bulk_data, entityRank_, elemSelector);
+      ngp::get_bucket_ids(bulk_data, entityRank_, elemSelector);
 
     // Create local copies of class data
     const auto entityRank = entityRank_;

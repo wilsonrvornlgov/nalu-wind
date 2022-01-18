@@ -6,6 +6,12 @@
 #include <stdexcept>
 #include <utility>
 
+#if defined(__GNUC__) && (6 < __GNUC__)
+#define NALU_CASE_FALLTHROUGH __attribute__ ((fallthrough));
+#else
+#define NALU_CASE_FALLTHROUGH
+#endif
+
 namespace sierra {
 namespace nalu {
 namespace utils {
@@ -118,10 +124,8 @@ linear_interp(
         << std::endl
         << "WARNING: Out of bound values encountered during interpolation"
         << std::endl;
-      // Repeated code to avoid fallthrough warnings
-      yout = yinp[idx.second];
-      break;
-
+    // no break here... allow fallthrough
+        NALU_CASE_FALLTHROUGH   
     case OutOfBounds::CLAMP:
       yout = yinp[idx.second];
       break;

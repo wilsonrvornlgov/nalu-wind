@@ -115,9 +115,9 @@ void do_assemble_face_elem_solver_test(
   faceElemKernel.result_.modify_device();
   faceElemKernel.result_.sync_host();
 
-  int expectedGoodResult = 1;
+  unsigned expectedGoodResult = 1;
   EXPECT_EQ(expectedGoodResult, faceElemKernel.result_.h_view(TestFaceElemKernel::CORRECTNESS));
-  int expectedNumTimesExecuted = 6;
+  unsigned expectedNumTimesExecuted = 6;
   EXPECT_EQ(expectedNumTimesExecuted, faceElemKernel.result_.h_view(TestFaceElemKernel::NUM_TIMES_EXECUTED));
 }
 

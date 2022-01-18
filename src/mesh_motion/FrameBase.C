@@ -1,44 +1,31 @@
+
 #include "mesh_motion/FrameBase.h"
 
-#include "FieldTypeDef.h"
-#include "mesh_motion/MotionDeformingInteriorKernel.h"
-#include "mesh_motion/MotionScalingKernel.h"
-#include "mesh_motion/MotionRotationKernel.h"
-#include "mesh_motion/MotionTranslationKernel.h"
-#include "mesh_motion/MotionWavesKernel.h"
-#include "NaluParsing.h"
-#include "ngp_utils/NgpLoopUtils.h"
-#include "ngp_utils/NgpReducers.h"
-#include "ngp_utils/NgpTypes.h"
+#include "mesh_motion/MotionPulsatingSphere.h"
+#include "mesh_motion/MotionRotation.h"
+#include "mesh_motion/MotionScaling.h"
+#include "mesh_motion/MotionTranslation.h"
+
+#include <NaluParsing.h>
 
 // stk_mesh/base/fem
 #include <stk_mesh/base/FieldBLAS.hpp>
-#include "stk_mesh/base/GetNgpMesh.hpp"
 
 namespace sierra{
 namespace nalu{
 
-FrameBase::FrameBase(stk::mesh::BulkData& bulk, const YAML::Node& node)
-  : bulk_(bulk), meta_(bulk.mesh_meta_data())
+FrameBase::FrameBase(
+  stk::mesh::BulkData& bulk,
+  const YAML::Node& node,
+  bool isInertial
+) : bulk_(bulk),
+    meta_(bulk.mesh_meta_data()),
+    isInertial_(isInertial)
 {
   load(node);
-
-  // set deformation flag based on motions in the frame
-  for (auto& mm: motionKernels_)
-    if ( mm->is_deforming() )
-      isDeforming_ = true;
 }
 
-FrameBase::~FrameBase()
-{
-  // Release the device pointers if any
-  for (auto& kern: motionKernels_) {
-    kern->free_on_device();
-  }
-}
-
-void
-FrameBase::load(const YAML::Node& node)
+void FrameBase::load(const YAML::Node& node)
 {
   // get any part names associated with current motion group
   populate_part_vec(node);
@@ -50,7 +37,7 @@ FrameBase::load(const YAML::Node& node)
   const auto& motions = node["motion"];
 
   const int num_motions = motions.size();
-  motionKernels_.resize(num_motions);
+  meshMotionVec_.resize(num_motions);
 
   // create the classes associated with every motion in current group
   for (int i=0; i < num_motions; i++) {
@@ -63,28 +50,25 @@ FrameBase::load(const YAML::Node& node)
     get_required(motion_def, "type", type);
 
     // determine type of mesh motion based on user definition in input file
-    if (type == "deforming_interior")
-      motionKernels_[i].reset(new MotionDeformingInteriorKernel(meta_, motion_def));
+    if (type == "pulsating_sphere")
+      meshMotionVec_[i].reset(new MotionPulsatingSphere(meta_,motion_def));
     else if (type == "rotation")
-      motionKernels_[i].reset(new MotionRotationKernel(motion_def));
+      meshMotionVec_[i].reset(new MotionRotation(motion_def));
     else if (type == "scaling")
-      motionKernels_[i].reset(new MotionScalingKernel(meta_,motion_def));
+      meshMotionVec_[i].reset(new MotionScaling(meta_,motion_def));
     else if (type == "translation")
-      motionKernels_[i].reset(new MotionTranslationKernel(motion_def));
-    else if (type == "waving_boundary")
-      motionKernels_[i].reset(new MotionWavesKernel(meta_,motion_def));
+      meshMotionVec_[i].reset(new MotionTranslation(motion_def));
     else
       throw std::runtime_error("FrameBase: Invalid mesh motion type: " + type);
 
   } // end for loop - i index
 }
 
-void
-FrameBase::populate_part_vec(const YAML::Node& node)
+void FrameBase::populate_part_vec(const YAML::Node& node)
 {
-  if (!node["mesh_parts"]) {
-    throw std::runtime_error("FrameBase: No mesh parts found.");
-  }
+  // if nor parts specified and frame is inertial, return
+  if (!node["mesh_parts"] && isInertial_)
+    return;
 
   // declare temporary part name vectors
   std::vector<std::string> partNamesVec;
@@ -92,23 +76,13 @@ FrameBase::populate_part_vec(const YAML::Node& node)
 
   // populate volume parts
   const auto& fparts = node["mesh_parts"];
+
   if (fparts.Type() == YAML::NodeType::Scalar)
     partNamesVec.push_back(fparts.as<std::string>());
   else
     partNamesVec = fparts.as<std::vector<std::string>>();
 
-  // get all mesh parts if all blocks were requested
-  if (
-    std::find(partNamesVec.begin(), partNamesVec.end(), "all_blocks") !=
-    partNamesVec.end()) {
-    partNamesVec.clear();
-    for (const auto* part : meta_.get_mesh_parts()) {
-      ThrowRequire(part);
-      if (part->topology().rank() == stk::topology::ELEMENT_RANK) {
-        partNamesVec.push_back(part->name());
-      }
-    }
-  }
+  assert (partNamesVec.size() > 0);
 
   // store all parts associated with current motion frame
   int numParts = partNamesVec.size();
@@ -126,8 +100,6 @@ FrameBase::populate_part_vec(const YAML::Node& node)
   // populate bc parts if any defined
   if (!node["mesh_parts_bc"])
     return;
-
-  std::cerr << " Registering bc parts for mesh motion" << std::endl;
 
   const auto& fpartsBc = node["mesh_parts_bc"];
   if (fpartsBc.Type() == YAML::NodeType::Scalar)
@@ -149,100 +121,62 @@ FrameBase::populate_part_vec(const YAML::Node& node)
   }
 }
 
-void
-FrameBase::setup()
+void FrameBase::setup()
 {
   // compute and set centroid if requested
   if(computeCentroid_) {
-    mm::ThreeDVecType computedCentroid;
+    std::vector<double> computedCentroid(3,0.0);
     compute_centroid_on_parts( computedCentroid );
     set_computed_centroid( computedCentroid );
   }
 }
 
-void
-FrameBase::compute_centroid_on_parts(mm::ThreeDVecType& centroid)
+void FrameBase::compute_centroid_on_parts(
+  std::vector<double>& centroid)
 {
-  // get NGP mesh
-  const auto& ngpMesh = stk::mesh::get_updated_ngp_mesh(bulk_);
-  const stk::mesh::EntityRank entityRank = stk::topology::NODE_RANK;
+  // set min/max
+  const int nDim = meta_.spatial_dimension();
+  ThrowRequire(nDim <= 3);
 
-  // get the field from the NGP mesh
-  stk::mesh::NgpField<double> modelCoords =
-    stk::mesh::get_updated_ngp_field<double>(
-    *meta_.get_field<VectorFieldType>(entityRank, "coordinates"));
+  const double largeNumber = 1.0e16;
+  double minCoord[3] = {largeNumber, largeNumber, largeNumber};
+  double maxCoord[3] = {-largeNumber, -largeNumber, -largeNumber};
 
-  // sync fields to device
-  modelCoords.sync_to_device();
+  // model coords are fine in this case
+  VectorFieldType *modelCoords = meta_.get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
 
-  // select all nodes in the parts
+  // select all nodes
   stk::mesh::Selector sel = stk::mesh::selectUnion(partVec_);
 
-  nalu_ngp::MinMaxSumScalar<double> xCoord, yCoord, zCoord;
-  nalu_ngp::MinMaxSum<double> xReducer(xCoord), yReducer(yCoord),
-    zReducer(zCoord);
+  // select all locally owned nodes for bounding box
+  stk::mesh::BucketVector const& bkts = bulk_.get_buckets( stk::topology::NODE_RANK, sel );
+  for ( stk::mesh::BucketVector::const_iterator ib = bkts.begin(); ib != bkts.end() ; ++ib ) {
+    stk::mesh::Bucket & b = **ib ;
+    const stk::mesh::Bucket::size_type length   = b.size();
+    double * mCoord = stk::mesh::field_data(*modelCoords, b);
+    for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
+      minCoord[0] = std::min(minCoord[0], mCoord[k*nDim+0]);
+      maxCoord[0] = std::max(maxCoord[0], mCoord[k*nDim+0]);
+      minCoord[1] = std::min(minCoord[1], mCoord[k*nDim+1]);
+      maxCoord[1] = std::max(maxCoord[1], mCoord[k*nDim+1]);
+      if (nDim == 3) {
+        minCoord[2] = std::min(minCoord[2], mCoord[k*nDim+2]);
+        maxCoord[2] = std::max(maxCoord[2], mCoord[k*nDim+2]);
+      }
+    }
+  }
 
-  nalu_ngp::run_entity_par_reduce(
-    "FrameBase::compute_x_centroid_on_parts", ngpMesh, entityRank, sel,
-    KOKKOS_LAMBDA(
-      const nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex& mi,
-      nalu_ngp::MinMaxSumScalar<double>& threadVal){
-      const double xc = modelCoords.get(mi,0);
-
-      if (xc < threadVal.min_val)
-        threadVal.min_val = xc;
-      if (xc > threadVal.max_val)
-        threadVal.max_val = xc;
-    },
-    xReducer);
-  nalu_ngp::run_entity_par_reduce(
-    "FrameBase::compute_y_centroid_on_parts", ngpMesh, stk::topology::NODE_RANK,
-    sel,
-    KOKKOS_LAMBDA(
-      const nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex& mi,
-      nalu_ngp::MinMaxSumScalar<double>& threadVal){
-      const double yc = modelCoords.get(mi,1);
-
-      if (yc < threadVal.min_val)
-        threadVal.min_val = yc;
-      if (yc > threadVal.max_val)
-        threadVal.max_val = yc;
-    },
-    yReducer);
-  nalu_ngp::run_entity_par_reduce(
-    "FrameBase::compute_z_centroid_on_parts", ngpMesh, stk::topology::NODE_RANK,
-    sel,
-    KOKKOS_LAMBDA(
-      const nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>::MeshIndex& mi,
-      nalu_ngp::MinMaxSumScalar<double>& threadVal){
-      const double zc = modelCoords.get(mi,2);
-
-      if (zc < threadVal.min_val)
-        threadVal.min_val = zc;
-      if (zc > threadVal.max_val)
-        threadVal.max_val = zc;
-    },
-    zReducer);
-
-  double lXC[2] = {xCoord.min_val, xCoord.max_val};
-  double lYC[2] = {yCoord.min_val, yCoord.max_val};
-  double lZC[2] = {zCoord.min_val, zCoord.max_val};
-
-  double gXC[2], gYC[2], gZC[2] = {0.0, 0.0};
-
-  stk::all_reduce_min(bulk_.parallel(), &lXC[0], &gXC[0], 1);
-  stk::all_reduce_min(bulk_.parallel(), &lYC[0], &gYC[0], 1);
-  stk::all_reduce_min(bulk_.parallel(), &lZC[0], &gZC[0], 1);
-
-  stk::all_reduce_max(bulk_.parallel(), &lXC[1], &gXC[1], 1);
-  stk::all_reduce_max(bulk_.parallel(), &lYC[1], &gYC[1], 1);
-  stk::all_reduce_max(bulk_.parallel(), &lZC[1], &gZC[1], 1);
+  // parallel reduction on min/max
+  double g_minCoord[3] = {};
+  double g_maxCoord[3] = {};
+  stk::ParallelMachine comm = NaluEnv::self().parallel_comm();
+  stk::all_reduce_min(comm, minCoord, g_minCoord, 3);
+  stk::all_reduce_max(comm, maxCoord, g_maxCoord, 3);
 
   // ensure the centroid is size number of dimensions
-  centroid[0] = 0.5*(gXC[0] + gXC[1]);
-  centroid[1] = 0.5*(gYC[0] + gYC[1]);
-  centroid[2] = 0.5*(gZC[0] + gZC[1]);
+  for ( int j = 0; j < nDim; ++j )
+    centroid[j] = 0.5*(g_maxCoord[j] + g_minCoord[j]);
 }
 
-} // namespace nalu
-} // namespace sierra
+} // nalu
+} // sierra

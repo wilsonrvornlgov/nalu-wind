@@ -12,7 +12,6 @@
 #include <SolutionOptions.h>
 #include <Enums.h>
 #include <NaluEnv.h>
-#include <NaluParsing.h>
 #include <FixPressureAtNodeInfo.h>
 
 // basic c++
@@ -55,8 +54,22 @@ SolutionOptions::SolutionOptions()
     isTurbulent_(false),
     turbulenceModel_(LAMINAR),
     meshMotion_(false),
-    meshTransformation_(false),
+    meshDeformation_(false),
     externalMeshDeformation_(false),
+    activateUniformRefinement_(false),
+    uniformRefineSaveAfter_(false),
+    activateAdaptivity_(false),
+    errorIndicatorType_(EIT_NONE),
+    adaptivityFrequency_(0),
+    useMarker_(false),
+    refineFraction_(0.0),
+    unrefineFraction_(0.0),
+    physicalErrIndCriterion_(0.0),
+    physicalErrIndUnrefCriterionMultipler_(1.0),
+    maxRefinementNumberOfElementsFraction_(0),
+    adapterExtraOutput_(false),
+    useAdapter_(false),
+    maxRefinementLevel_(0),
     ncAlgGaussLabatto_(true),
     ncAlgUpwindAdvection_(true),
     ncAlgIncludePstab_(true),
@@ -79,12 +92,10 @@ SolutionOptions::SolutionOptions()
     earthAngularVelocity_(7.2921159e-5),
     latitude_(0.0),
     raBoussinesqTimeScale_(-1.0),
-    symmetryBcPenaltyFactor_(0.0),
-    useStreletsUpwinding_(false),
     activateOpenMdotCorrection_(false),
     mdotAlgOpenCorrection_(0.0),
     explicitlyZeroOpenPressureGradient_(false),
-    resetAMSAverages_(true)
+    resetTAMSAverages_(true)
 {
   // nothing to do
 }
@@ -112,13 +123,6 @@ SolutionOptions::load(const YAML::Node & y_node)
     get_if_present(y_solution_options,
                    "nearest_face_entrainment",
                    nearestFaceEntrain_, nearestFaceEntrain_);
-
-    // penalty factor to apply to weak symmetry bc default to 2.0
-    // Strengthening this penalty will better approximate the
-    // boundary condition but will also increase the condition number of the
-    // linear system and increase the error in the interior
-    get_if_present(
-      y_node, "symmetry_bc_penalty_factor", symmetryBcPenaltyFactor_);
 
     // divU factor for stress
     get_if_present(y_solution_options, "divU_stress_scaling", includeDivU_, includeDivU_);
@@ -153,6 +157,7 @@ SolutionOptions::load(const YAML::Node & y_node)
     get_if_present(y_solution_options, "eigenvalue_perturbation_bias_towards", eigenvaluePerturbBiasTowards_);
     get_if_present(y_solution_options, "eigenvalue_perturbation_turbulent_ke", eigenvaluePerturbTurbKe_);
     
+
     std::string projected_timescale_type = "default";
     get_if_present(y_solution_options, "projected_timescale_type",
                    projected_timescale_type, projected_timescale_type);
@@ -163,9 +168,9 @@ SolutionOptions::load(const YAML::Node & y_node)
     else
       throw std::runtime_error("SolutionOptions: Invalid option provided for projected_timescale_type");
 
-    // reset running AMS averages to instantaneous quantities during intialization
+    // reset running TAMS averages to instantaneous quantities during intialization
     // you would want to do this when restarting from a RANS simulation 
-    get_if_present(y_solution_options, "reset_AMS_averages_on_init", resetAMSAverages_, resetAMSAverages_);
+    get_if_present(y_solution_options, "reset_TAMS_averages_on_init", resetTAMSAverages_, resetTAMSAverages_);
 
     // extract turbulence model; would be nice if we could parse an enum..
     std::string specifiedTurbModel;
@@ -194,11 +199,6 @@ SolutionOptions::load(const YAML::Node & y_node)
     }
     if ( turbulenceModel_ != LAMINAR ) {
       isTurbulent_ = true;
-    }
-    if (turbulenceModel_ == SST_IDDES) {
-      get_if_present(
-        y_solution_options, "strelets_upwinding", useStreletsUpwinding_,
-        useStreletsUpwinding_);
     }
     // initialize turbuelnce constants since some laminar models may need such variables, e.g., kappa
     initialize_turbulence_constants();
@@ -320,24 +320,8 @@ SolutionOptions::load(const YAML::Node & y_node)
           const YAML::Node y_user_constants = y_option["user_constants"];
           get_if_present(y_user_constants, "reference_density",  referenceDensity_, referenceDensity_);
           get_if_present(y_user_constants, "reference_temperature",  referenceTemperature_, referenceTemperature_);
-
-          const auto thermal_expansion_option = "thermal_expansion_coefficient";
-          if (
-            y_user_constants["reference_temperature"] &&
-            !y_user_constants[thermal_expansion_option]) {
-            thermalExpansionCoeff_ = 1 / referenceTemperature_;
-            NaluEnv::self().naluOutputP0()
-              << "Using ideal gas relationship for thermal expansion "
-                 "coefficient of "
-              << thermalExpansionCoeff_ << "\n  -- specify "
-              << thermal_expansion_option
-              << " in user constants to set a different value"
-              << std::endl;
-          }
-          get_if_present(
-            y_user_constants, thermal_expansion_option, thermalExpansionCoeff_,
-            thermalExpansionCoeff_);
-          
+          get_if_present(y_user_constants, "thermal_expansion_coefficient",  thermalExpansionCoeff_, thermalExpansionCoeff_);
+          get_if_present(y_user_constants, "stefan_boltzmann",  stefanBoltzmann_, stefanBoltzmann_);
           get_if_present(y_user_constants, "earth_angular_velocity", earthAngularVelocity_, earthAngularVelocity_);
           get_if_present(y_user_constants, "latitude", latitude_, latitude_);
           get_if_present(y_user_constants, "boussinesq_time_scale", raBoussinesqTimeScale_, raBoussinesqTimeScale_);
@@ -405,20 +389,6 @@ SolutionOptions::load(const YAML::Node & y_node)
         else if (expect_map( y_option, "consistent_mass_matrix_png", optional)) {
           y_option["consistent_mass_matrix_png"] >> consistentMassMatrixPngMap_ ;
         }
-        else if (expect_map( y_option, "dynamic_body_force_box_parameters", optional)) {
-          const YAML::Node yDyn = y_option["dynamic_body_force_box_parameters"];
-          get_required(yDyn, "forcing_direction", dynamicBodyForceDir_);
-          get_required(yDyn, "velocity_reference", dynamicBodyForceVelReference_);
-          get_required(yDyn, "density_reference", dynamicBodyForceDenReference_);
-          get_required(yDyn, "velocity_target_name", dynamicBodyForceVelTarget_);
-          const int dragTargetSize = yDyn["drag_target_name"].size();
-          dynamicBodyForceDragTarget_.resize(dragTargetSize);
-          for (int i = 0; i < dragTargetSize; ++i ) {
-            dynamicBodyForceDragTarget_[i] = yDyn["drag_target_name"][i].as<std::string>();
-          }
-          get_required(yDyn, "output_file_name", dynamicBodyForceOutFile_);
-          dynamicBodyForceBox_ = true;
-        }
         else {
           if (!NaluEnv::self().parallel_rank())
           {
@@ -466,9 +436,9 @@ SolutionOptions::load(const YAML::Node & y_node)
         if (fix_pressure["search_method"]) {
           std::string searchMethodName = fix_pressure["search_method"].as<std::string>();
           if (searchMethodName == "boost_rtree") {
-            fixPressureInfo_->searchMethod_ = stk::search::KDTREE;
-            NaluEnv::self().naluOutputP0() << "Warning: search method 'boost_rtree' has been"
-              <<" deprecated. Switching to 'stk_kdtree'." << std::endl;
+            fixPressureInfo_->searchMethod_ = stk::search::BOOST_RTREE;
+            NaluEnv::self().naluOutputP0() << "Warning: search method 'boost_rtree' is being"
+              <<" deprecated. Please switch to 'stk_kdtree'." << std::endl;
           }
           else if (searchMethodName == "stk_kdtree")
             fixPressureInfo_->searchMethod_ = stk::search::KDTREE;
@@ -481,8 +451,127 @@ SolutionOptions::load(const YAML::Node & y_node)
         fixPressureInfo_->stkNodeId_ = fix_pressure["node_identifier"].as<unsigned int>();
       }
     }
+
+    // uniform refinement options
+    {
+      const YAML::Node y_uniform = expect_map(y_solution_options, "uniform_refinement", optional);
+      if (y_uniform) {
+
+        NaluEnv::self().naluOutputP0() << "Uniform refinement option found." << std::endl;
+
+        const YAML::Node y_refine_at = expect_sequence(y_uniform, "refine_at", required);
+        if (y_refine_at) {
+          activateUniformRefinement_ = true;
+          std::vector<int> mvec;
+          mvec = y_refine_at.as<std::vector<int> >() ;
+          for (unsigned i=0; i < mvec.size(); ++i) {
+            NaluEnv::self().naluOutputP0() << "Uniform Refinement: refine_at[" << i << "]= " << mvec[i] << std::endl;
+
+            if (i > 0 && mvec[i-1] > mvec[i])
+              throw std::runtime_error("refine_at option error: "+ NaluParsingHelper::info(y_refine_at));
+          }
+          refineAt_ = mvec;
+        }
+        else {
+          throw std::runtime_error("refine_at option missing: "+ NaluParsingHelper::info(y_uniform));
+        }
+        get_if_present(y_uniform, "save_mesh", uniformRefineSaveAfter_, uniformRefineSaveAfter_);
+        NaluEnv::self().naluOutputP0() << "Uniform Refinement: save_mesh= " << uniformRefineSaveAfter_ << std::endl;
+      }
+    }
+
+    // adaptivity options
+    const YAML::Node y_adaptivity = expect_map(y_solution_options, "adaptivity", optional);
+    if (y_adaptivity) {
+
+#if defined (NALU_USES_PERCEPT)
+      NaluEnv::self().naluOutputP0() << "Adaptivity Active. tested on Tri, Tet and quad meshes " << std::endl;
+#else
+      throw std::runtime_error("Adaptivity not supported in NaluV1.0:");
+#endif
+      
+      get_if_present(y_adaptivity, "frequency", adaptivityFrequency_, adaptivityFrequency_);
+      get_if_present(y_adaptivity, "activate", activateAdaptivity_, activateAdaptivity_);
+
+      if (activateAdaptivity_ && adaptivityFrequency_<1) {
+	throw std::runtime_error("When adaptivity is active, the frequency must by greater than 0:" + NaluParsingHelper::info(y_adaptivity));
+      }
+
+      const YAML::Node y_error_indicator = expect_map(y_adaptivity, "error_indicator", required);
+      if (y_error_indicator)
+      {
+        std::string type = "";
+        get_if_present(y_error_indicator, "type", type, type);
+        if (type == "pstab")
+          errorIndicatorType_ = EIT_PSTAB;
+        else if (type == "limiter")
+          errorIndicatorType_ = EIT_LIMITER;
+
+        // error catching and user output
+        if ( errorIndicatorType_ == EIT_NONE ) {
+          NaluEnv::self().naluOutputP0() << "no or unknown error indicator was provided; will choose pstab.  Input value= " << type << std::endl;
+          errorIndicatorType_ = EIT_PSTAB;
+        }
+
+        // for debugging/testing use only
+        if (type == "simple.vorticity_dx")
+          errorIndicatorType_ = EIT_SIMPLE_VORTICITY_DX;
+        else if (type == "simple.vorticity")
+          errorIndicatorType_ = EIT_SIMPLE_VORTICITY;
+        else if (type == "simple.dudx2")
+          errorIndicatorType_ = EIT_SIMPLE_DUDX2;
+        if (errorIndicatorType_ & EIT_SIMPLE_BASE) {
+          NaluEnv::self().naluOutputP0() << "WARNING: Found debug/test error inidicator type. Input value= " << type << std::endl;
+        }
+      }
+
+      NaluEnv::self().naluOutputP0() << std::endl;
+      NaluEnv::self().naluOutputP0() << "Adaptivity Options Review: " << std::endl;
+      NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
+      NaluEnv::self().naluOutputP0() << " pstab: " << (errorIndicatorType_ & EIT_PSTAB)
+                      << " limit: " << (errorIndicatorType_ & EIT_LIMITER)
+                      << " freq : " << adaptivityFrequency_ << std::endl;
+
+      const YAML::Node y_adapter = expect_map(y_adaptivity, "adapter", optional);
+      bool marker_optional = true;
+      if (y_adapter) {
+        get_if_present(y_adapter, "activate", useAdapter_, useAdapter_);
+        get_if_present(y_adapter, "max_refinement_level", maxRefinementLevel_, maxRefinementLevel_);
+        get_if_present(y_adapter, "extra_output", adapterExtraOutput_, adapterExtraOutput_);
+        marker_optional = false;
+      }
+
+      const YAML::Node y_marker = expect_map(y_adaptivity, "marker", marker_optional);
+      if (y_marker) {
+        bool defaultUseMarker = true;
+        get_if_present(y_marker, "activate", useMarker_, defaultUseMarker);
+        get_if_present(y_marker, "refine_fraction", refineFraction_, refineFraction_);
+        get_if_present(y_marker, "unrefine_fraction", unrefineFraction_, unrefineFraction_);
+        get_if_present(y_marker, "max_number_elements_fraction", maxRefinementNumberOfElementsFraction_, maxRefinementNumberOfElementsFraction_);
+        get_if_present(y_marker, "physical_error_criterion", physicalErrIndCriterion_, physicalErrIndCriterion_);
+        get_if_present(y_marker, "physical_error_criterion_unrefine_multiplier", physicalErrIndUnrefCriterionMultipler_, physicalErrIndUnrefCriterionMultipler_);
+      }
+
+
+#define OUTN(a) " " << #a << " = " << a
+
+      NaluEnv::self().naluOutputP0() << "Adapt: options: "
+                      << OUTN(activateAdaptivity_)
+                      << OUTN(errorIndicatorType_)
+                      << OUTN(adaptivityFrequency_) << "\n"
+                      << OUTN(useMarker_)
+                      << OUTN(refineFraction_)
+                      << OUTN(unrefineFraction_)
+                      << OUTN(physicalErrIndCriterion_)
+                      << OUTN(physicalErrIndUnrefCriterionMultipler_)
+                      << OUTN(maxRefinementNumberOfElementsFraction_) << "\n"
+                      << OUTN(useAdapter_)
+                      << OUTN(maxRefinementLevel_)
+                      << std::endl;
+
+    }
   }
-  
+
    NaluEnv::self().naluOutputP0() << std::endl;
    NaluEnv::self().naluOutputP0() << "Turbulence Model Review:   " << std::endl;
    NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
@@ -530,11 +619,7 @@ SolutionOptions::initialize_turbulence_constants()
   turbModelConstantMap_[TM_kappa] = 0.41;
   turbModelConstantMap_[TM_cDESke] = 0.61; 
   turbModelConstantMap_[TM_cDESkw] = 0.78;
-  turbModelConstantMap_[TM_tkeProdLimitRatio] =
-    (turbulenceModel_ == SST || turbulenceModel_ == SST_BLT || turbulenceModel_ == SST_DES ||
-     turbulenceModel_ == SST_AMS || turbulenceModel_ == SST_IDDES)
-      ? 10.0
-      : 500.0;
+  turbModelConstantMap_[TM_tkeProdLimitRatio] = (turbulenceModel_ == SST || turbulenceModel_ == SST_DES || turbulenceModel_ == SST_TAMS) ? 10.0 : 500.0;
   turbModelConstantMap_[TM_cmuEps] = 0.0856; 
   turbModelConstantMap_[TM_cEps] = 0.845;
   turbModelConstantMap_[TM_betaStar] = 0.09;
@@ -555,7 +640,7 @@ SolutionOptions::initialize_turbulence_constants()
   turbModelConstantMap_[TM_ci] = 0.9;
   turbModelConstantMap_[TM_elog] = 9.8;
   turbModelConstantMap_[TM_yplus_crit] = 11.63;
-  turbModelConstantMap_[TM_CMdeg] = 0.11;
+  turbModelConstantMap_[TM_CMdeg] = 0.13;
   turbModelConstantMap_[TM_forCl] = 4.0;
   turbModelConstantMap_[TM_forCeta] = 70.0;
   turbModelConstantMap_[TM_forCt] = 6.0;
@@ -563,30 +648,6 @@ SolutionOptions::initialize_turbulence_constants()
   turbModelConstantMap_[TM_forBlKol] = 1.0;
   turbModelConstantMap_[TM_forFac] = 8.0;
   turbModelConstantMap_[TM_v2cMu] = 0.22;
-  turbModelConstantMap_[TM_aspRatSwitch] = 64.0;
-  turbModelConstantMap_[TM_periodicForcingLengthX] = M_PI;
-  turbModelConstantMap_[TM_periodicForcingLengthY] = 0.25;
-  turbModelConstantMap_[TM_periodicForcingLengthZ] = 3.0 / 8.0 * M_PI;
-  turbModelConstantMap_[TM_sigmaMax] = 1.0;
-  turbModelConstantMap_[TM_ch1] = 3.0;
-  turbModelConstantMap_[TM_ch2] = 1.0;
-  turbModelConstantMap_[TM_ch3] = 0.5;
-  turbModelConstantMap_[TM_tau_des] = 100.0/15.0;
-  turbModelConstantMap_[TM_iddes_Cw] = 0.15;
-  turbModelConstantMap_[TM_iddes_Cdt1] = 20.0;
-  turbModelConstantMap_[TM_iddes_Cdt2] = 3.0;
-  turbModelConstantMap_[TM_iddes_Cl] = 5.0;
-  turbModelConstantMap_[TM_iddes_Ct] = 1.87;
-  turbModelConstantMap_[TM_abl_bndtw] = 5.0;
-  turbModelConstantMap_[TM_abl_deltandtw] = 1.0;
-  turbModelConstantMap_[TM_abl_sigma] = 2.0;
-  turbModelConstantMap_[TM_ams_peclet_offset] = 0.6;
-  turbModelConstantMap_[TM_ams_peclet_slope] = 12.0;
-  turbModelConstantMap_[TM_ams_peclet_scale] = 100.0;
-  turbModelConstantMap_[TM_caOne] = 2.0;
-  turbModelConstantMap_[TM_caTwo] = 0.06;
-  turbModelConstantMap_[TM_ceOne] = 1.0;
-  turbModelConstantMap_[TM_ceTwo] = 50.0;
 }
 
 

@@ -12,6 +12,8 @@
 #ifndef AveragingInfo_h
 #define AveragingInfo_h
 
+#include <NaluParsing.h>
+
 #include <string>
 #include <vector>
 

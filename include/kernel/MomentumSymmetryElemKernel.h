@@ -7,6 +7,7 @@
 // for more details.
 //
 
+
 #ifndef MOMENTUMSYMMETRYELEMKERNEL_H
 #define MOMENTUMSYMMETRYELEMKERNEL_H
 
@@ -27,17 +28,17 @@ class MasterElement;
 
 /** Symmetry kernel for momentum equation (velocity DOF)
  */
-template <typename BcAlgTraits>
-class MomentumSymmetryElemKernel : public Kernel
+template<typename BcAlgTraits>
+class MomentumSymmetryElemKernel: public Kernel
 {
 public:
   MomentumSymmetryElemKernel(
-    const stk::mesh::MetaData& metaData,
-    const SolutionOptions& solnOpts,
-    VectorFieldType* velocity,
-    ScalarFieldType* viscosity,
-    ElemDataRequests& faceDataPreReqs,
-    ElemDataRequests& elemDataPreReqs);
+    const stk::mesh::MetaData &metaData,
+    const SolutionOptions &solnOpts,
+    VectorFieldType *velocity,
+    ScalarFieldType *viscosity,
+    ElemDataRequests &faceDataPreReqs,
+    ElemDataRequests &elemDataPreReqs);
 
   virtual ~MomentumSymmetryElemKernel();
 
@@ -46,31 +47,30 @@ public:
    */
   using Kernel::execute;
   virtual void execute(
-    SharedMemView<DoubleType**>& lhs,
-    SharedMemView<DoubleType*>& rhs,
-    ScratchViews<DoubleType>& faceScratchViews,
-    ScratchViews<DoubleType>& elemScratchViews,
+    SharedMemView<DoubleType**> &lhs,
+    SharedMemView<DoubleType*> &rhs,
+    ScratchViews<DoubleType> &faceScratchViews,
+    ScratchViews<DoubleType> &elemScratchViews,
     int elemFaceOrdinal);
 
 private:
   MomentumSymmetryElemKernel() = delete;
 
-  const unsigned viscosity_;
-  const unsigned velocityNp1_;
-  const unsigned coordinates_;
-  const unsigned exposedAreaVec_;
-  const double includeDivU_;
+  unsigned viscosity_      {stk::mesh::InvalidOrdinal};
+  unsigned velocityNp1_    {stk::mesh::InvalidOrdinal};
+  unsigned coordinates_    {stk::mesh::InvalidOrdinal};
+  unsigned exposedAreaVec_ {stk::mesh::InvalidOrdinal};
 
-  MasterElement* meSCS_{nullptr};
-  const double penaltyFactor_;
+  const double includeDivU_;
+  const bool shiftedGradOp_;
+
+  MasterElement *meSCS_{nullptr};
 
   /// Shape functions
-  AlignedViewType<
-    DoubleType[BcAlgTraits::numFaceIp_][BcAlgTraits::nodesPerFace_]>
-    vf_shape_function_{"view_face_shape_func"};
+  AlignedViewType<DoubleType[BcAlgTraits::numFaceIp_][BcAlgTraits::nodesPerFace_]> vf_shape_function_ {"view_face_shape_func"};
 };
 
-} // namespace nalu
-} // namespace sierra
+}  // nalu
+}  // sierra
 
 #endif /* MOMENTUMSYMMETRYELEMKERNEL_H */

@@ -50,6 +50,7 @@ TEST_F(KsgsKernelHex8Mesh, NGP_tke_ksgs_node)
 
   // Setup solution options
   solnOpts_.meshMotion_ = false;
+  solnOpts_.meshDeformation_ = false;
   solnOpts_.externalMeshDeformation_ = false;
   solnOpts_.initialize_turbulence_constants();
 
@@ -63,7 +64,7 @@ TEST_F(KsgsKernelHex8Mesh, NGP_tke_ksgs_node)
   EXPECT_EQ(helperObjs.linsys->lhs_.extent(0), 8u);
   EXPECT_EQ(helperObjs.linsys->lhs_.extent(1), 8u);
   EXPECT_EQ(helperObjs.linsys->rhs_.extent(0), 8u);
-  EXPECT_EQ(helperObjs.linsys->numSumIntoCalls_(0), 8u);
+  EXPECT_EQ(helperObjs.linsys->numSumIntoCalls_(0), 8);
 
   namespace hex8_golds = hex8_golds::tke_ksgs;
   unit_test_kernel_utils::expect_all_near(

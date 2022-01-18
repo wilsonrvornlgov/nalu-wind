@@ -30,6 +30,9 @@
 
 #include <kernel/KernelBuilder.h>
 
+// user functions
+#include <user_functions/SteadyThermalContactAuxFunction.h>
+
 // stk_mesh/base/fem
 #include <stk_mesh/base/BulkData.hpp>
 #include <stk_mesh/base/Field.hpp>
@@ -83,7 +86,7 @@ ProjectedNodalGradientEquationSystem::ProjectedNodalGradientEquationSystem(
 {
   // extract solver name and solver object
   std::string solverName = realm_.equationSystems_.get_solver_block_name(dofName);
-  LinearSolver *solver = realm_.root()->linearSolvers_->create_solver(solverName, realm_.name(), eqType_);
+  LinearSolver *solver = realm_.root()->linearSolvers_->create_solver(solverName, eqType_);
   linsys_ = LinearSystem::create(realm_, realm_.spatialDimension_, this, solver);
 
   // push back EQ to manager
@@ -328,9 +331,19 @@ ProjectedNodalGradientEquationSystem::reinitialize_linear_system()
   const bool provideOutput = linsys_->provideOutput_;
   delete linsys_;
 
+  // delete old solver
+  const EquationType theEqID = eqType_;
+  LinearSolver *theSolver = NULL;
+  std::map<EquationType, LinearSolver *>::const_iterator iter
+    = realm_.root()->linearSolvers_->solvers_.find(theEqID);
+  if (iter != realm_.root()->linearSolvers_->solvers_.end()) {
+    theSolver = (*iter).second;
+    delete theSolver;
+  }
+
   // create new solver; reset parameters
   std::string solverName = realm_.equationSystems_.get_solver_block_name(dofName_);
-  LinearSolver *solver = realm_.root()->linearSolvers_->reinitialize_solver(solverName, realm_.name(), eqType_);
+  LinearSolver *solver = realm_.root()->linearSolvers_->create_solver(solverName, eqType_);
   linsys_ = LinearSystem::create(realm_, realm_.spatialDimension_, this, solver);
   linsys_->provideOutput_ = provideOutput;
 

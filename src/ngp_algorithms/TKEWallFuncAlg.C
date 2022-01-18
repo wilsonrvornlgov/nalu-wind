@@ -14,7 +14,6 @@
 #include "master_element/MasterElementFactory.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldOps.h"
-#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "ScratchViews.h"
 #include "SolutionOptions.h"
@@ -22,7 +21,6 @@
 
 #include "stk_mesh/base/Field.hpp"
 #include "stk_mesh/base/FieldParallel.hpp"
-#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -56,7 +54,7 @@ TKEWallFuncAlg<BcAlgTraits>::TKEWallFuncAlg(Realm& realm, stk::mesh::Part* part)
 template<typename BcAlgTraits>
 void TKEWallFuncAlg<BcAlgTraits>::execute()
 {
-  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<stk::mesh::NgpMesh>;
+  using ElemSimdData = sierra::nalu::nalu_ngp::ElemSimdData<ngp::Mesh>;
   const auto& meshInfo = realm_.mesh_info();
   const auto ngpMesh = meshInfo.ngp_mesh();
   const auto& fieldMgr = meshInfo.ngp_field_manager();

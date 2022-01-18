@@ -14,7 +14,7 @@
 
 #include <EquationSystem.h>
 #include <FieldTypeDef.h>
-#include <NaluParsedTypes.h>
+#include <NaluParsing.h>
 
 #include "ngp_algorithms/NodalGradAlgDriver.h"
 

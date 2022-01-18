@@ -16,24 +16,19 @@
 #include <Kokkos_Core.hpp>
 #include <ElemDataRequests.h>
 #include <FieldTypeDef.h>
-#include <stk_mesh/base/Ngp.hpp>
-#include <stk_mesh/base/GetNgpField.hpp>
-#include <ngp_utils/NgpFieldManager.h>
+#include <stk_ngp/Ngp.hpp>
+#include <stk_ngp/NgpFieldManager.hpp>
 
 namespace sierra{
 namespace nalu{
 
 struct FieldInfoNGP {
   FieldInfoNGP(const stk::mesh::FieldBase* fld, unsigned scalars)
-  : field(stk::mesh::get_updated_ngp_field<double>(*fld)), scalarsDim1(scalars), scalarsDim2(0)
-  {
-    field.sync_to_device();
-  }  
+  : field(fld->get_mesh(), *fld), scalarsDim1(scalars), scalarsDim2(0)
+  {}  
   FieldInfoNGP(const stk::mesh::FieldBase* fld, unsigned tensorDim1, unsigned tensorDim2)
-  : field(stk::mesh::get_updated_ngp_field<double>(*fld)), scalarsDim1(tensorDim1), scalarsDim2(tensorDim2)
-  {
-    field.sync_to_device();
-  }
+  : field(fld->get_mesh(), *fld), scalarsDim1(tensorDim1), scalarsDim2(tensorDim2)
+  {}
   FieldInfoNGP(NGPDoubleFieldType& fld, unsigned scalars)
     : field(fld), scalarsDim1(scalars), scalarsDim2(0)
   {}
@@ -49,9 +44,6 @@ struct FieldInfoNGP {
   : field(), scalarsDim1(0), scalarsDim2(0)
   {}
 
-  KOKKOS_DEFAULTED_FUNCTION
-  FieldInfoNGP& operator=(const FieldInfoNGP&) = default;
-
   NGPDoubleFieldType field;
   unsigned scalarsDim1;
   unsigned scalarsDim2;
@@ -63,13 +55,13 @@ struct CoordFieldInfo
     : coordField(fld)
   {}
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   CoordFieldInfo() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   CoordFieldInfo(const CoordFieldInfo&) = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   ~CoordFieldInfo() = default;
 
   KOKKOS_FUNCTION
@@ -108,10 +100,10 @@ public:
   typedef Kokkos::View<FieldInfoType*, Kokkos::LayoutRight, MemSpace> FieldInfoView;
 
   ElemDataRequestsGPU(
-    const nalu_ngp::FieldManager& fieldMgr,
+    const ngp::FieldManager& fieldMgr,
     const ElemDataRequests& dataReq, unsigned totalFields);
 
-  KOKKOS_FUNCTION ~ElemDataRequestsGPU() {}
+  ~ElemDataRequestsGPU() {}
 
   void add_cvfem_face_me(MasterElement *meFC)
   { meFC_ = meFC; }
@@ -174,10 +166,10 @@ private:
   void fill_host_data_enums(const ElemDataRequests& dataReq, COORDS_TYPES ctype);
 
   void fill_host_fields(
-    const ElemDataRequests& dataReq, const nalu_ngp::FieldManager& fieldMgr);
+    const ElemDataRequests& dataReq, const ngp::FieldManager& fieldMgr);
 
   void fill_host_coords_fields(
-    const ElemDataRequests& dataReq, const nalu_ngp::FieldManager& fieldMgr);
+    const ElemDataRequests& dataReq, const ngp::FieldManager& fieldMgr);
 
   DataEnumView dataEnums[MAX_COORDS_TYPES];
   DataEnumView::HostMirror hostDataEnums[MAX_COORDS_TYPES];

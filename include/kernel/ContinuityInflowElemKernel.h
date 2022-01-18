@@ -38,7 +38,7 @@ public:
     const bool &useShifted,
     ElemDataRequests &faceDataPreReqs);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~ContinuityInflowElemKernel() = default;
 
   /** Perform pre-timestep work for the computational kernel

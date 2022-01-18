@@ -59,12 +59,9 @@ CopyFieldAlgorithm::execute()
     toField_->mesh_meta_data_ordinal());
   auto& fromField = fieldMgr.get_field<double>(
     fromField_->mesh_meta_data_ordinal());
-  fromField.sync_to_device();
-  toField.sync_to_device();
   nalu_ngp::field_copy(
     realm_.ngp_mesh(), selector, toField, fromField,
     beginPos_, endPos_, entityRank_);
-  toField.modify_on_device();
 }
 
 } // namespace nalu

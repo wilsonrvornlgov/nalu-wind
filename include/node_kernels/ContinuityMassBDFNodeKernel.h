@@ -15,9 +15,7 @@
 #include "FieldTypeDef.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace sierra{
 namespace nalu{
@@ -31,10 +29,10 @@ public:
   ContinuityMassBDFNodeKernel(
     const stk::mesh::BulkData&);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   ContinuityMassBDFNodeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~ContinuityMassBDFNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -46,21 +44,15 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  stk::mesh::NgpField<double> densityNm1_;
-  stk::mesh::NgpField<double> densityN_;
-  stk::mesh::NgpField<double> densityNp1_;
-  stk::mesh::NgpField<double> dnvNp1_;
-  stk::mesh::NgpField<double> dnvN_;
-  stk::mesh::NgpField<double> dnvNm1_;
-
+  ngp::Field<double> densityNm1_;
+  ngp::Field<double> densityN_;
+  ngp::Field<double> densityNp1_;
+  ngp::Field<double> dualNodalVolume_;
 
   unsigned densityNm1ID_ {stk::mesh::InvalidOrdinal};
   unsigned densityNID_ {stk::mesh::InvalidOrdinal};
   unsigned densityNp1ID_ {stk::mesh::InvalidOrdinal};
-  unsigned dnvNp1ID_ {stk::mesh::InvalidOrdinal}; //dual nodal volume
-  unsigned dnvNID_ {stk::mesh::InvalidOrdinal}; //dual nodal volume
-  unsigned dnvNm1ID_ {stk::mesh::InvalidOrdinal}; //dual nodal volume
-
+  unsigned dualNodalVolumeID_ {stk::mesh::InvalidOrdinal};
 
   double dt_;
   double gamma1_, gamma2_, gamma3_;

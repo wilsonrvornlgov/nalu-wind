@@ -11,5 +11,4 @@ target_sources(${utest_ex_name} PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestGeometryAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSDRWallAlg.C
   ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestNodalGradPOpenBoundary.C
-  ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSSTMaxLengthScaleAlg.C
   )

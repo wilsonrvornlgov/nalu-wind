@@ -71,16 +71,12 @@ Realms::breadboard()
   }
 }
 
-void Realms::initialize_prolog()
+void 
+Realms::initialize()
 {
-  for (auto* realm: realmVector_)
-    realm->initialize_prolog();
-}
-
-void Realms::initialize_epilog()
-{
-  for (auto* realm: realmVector_)
-    realm->initialize_epilog();
+  for ( size_t irealm = 0; irealm < realmVector_.size(); ++irealm ) {
+    realmVector_[irealm]->initialize();
+  }
 }
 
 Simulation *Realms::root() { return parent()->root(); }

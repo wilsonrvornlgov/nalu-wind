@@ -1,5 +1,6 @@
 target_sources(${utest_ex_name} PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTest1ElemCoordCheck.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestABLWallFunction.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestBasicKokkos.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestCopyAndInterleave.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestCreateOnDevice.C
@@ -33,8 +34,9 @@ target_sources(${utest_ex_name} PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSideIsInElement.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSideNodeOrdinals.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSidePCoords.C
-   ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSideWriter.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSimdBasic.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSimdContAdvElem.C
+   ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSimdMomentum.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSingleHexPromotion.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSpinnerLidarPattern.C
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestSuppAlgDataSharing.C
@@ -42,8 +44,13 @@ target_sources(${utest_ex_name} PRIVATE
    ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestUtils.C
 )
 
+if(ENABLE_OPENFAST)
+   target_sources(${utest_ex_name} PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestActuatorDiskFAST.C
+      ${CMAKE_CURRENT_SOURCE_DIR}/UnitTestActuatorFASTGaussian.C
+   )
+endif()
 
-add_subdirectory(actuator)
 add_subdirectory(algorithms)
 add_subdirectory(kernels)
 add_subdirectory(edge_kernels)
@@ -52,6 +59,4 @@ add_subdirectory(ngp_algorithms)
 add_subdirectory(ho_kernels)
 add_subdirectory(ngp_kernels)
 add_subdirectory(mesh_motion)
-add_subdirectory(gcl)
 add_subdirectory(utils)
-add_subdirectory(matrix_free)

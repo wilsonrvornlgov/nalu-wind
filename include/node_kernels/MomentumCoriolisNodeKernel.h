@@ -15,9 +15,7 @@
 #include "CoriolisSrc.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -31,9 +29,10 @@ public:
     const stk::mesh::BulkData&,
     const SolutionOptions&);
 
-  MomentumCoriolisNodeKernel() = delete;
+  KOKKOS_FUNCTION
+  MomentumCoriolisNodeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~MomentumCoriolisNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -47,9 +46,9 @@ public:
 private:
   const CoriolisSrc cor_;
 
-  stk::mesh::NgpField<double> dualNodalVolume_;
-  stk::mesh::NgpField<double> densityNp1_;
-  stk::mesh::NgpField<double> velocityNp1_;
+  ngp::Field<double> dualNodalVolume_;
+  ngp::Field<double> densityNp1_;
+  ngp::Field<double> velocityNp1_;
 
   unsigned dualNodalVolumeID_ {stk::mesh::InvalidOrdinal};
   unsigned densityNp1ID_ {stk::mesh::InvalidOrdinal};

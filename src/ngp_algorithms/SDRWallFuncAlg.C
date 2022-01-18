@@ -13,21 +13,16 @@
 #include "master_element/MasterElementFactory.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldOps.h"
-#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "utils/StkHelpers.h"
-#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra {
 namespace nalu {
 
 template<typename BcAlgTraits>
 SDRWallFuncAlg<BcAlgTraits>::SDRWallFuncAlg(
-  Realm& realm, 
-  stk::mesh::Part* part,
-  bool RANSAblBcApproach,
-  double z0):
-    Algorithm(realm, part),
+  Realm& realm, stk::mesh::Part* part
+) : Algorithm(realm, part),
     faceData_(realm.meta_data()),
     elemData_(realm.meta_data()),
     coordinates_(
@@ -45,9 +40,7 @@ SDRWallFuncAlg<BcAlgTraits>::SDRWallFuncAlg(
     meFC_(MasterElementRepo::get_surface_master_element<
           typename BcAlgTraits::FaceTraits>()),
     meSCS_(MasterElementRepo::get_surface_master_element<
-           typename BcAlgTraits::ElemTraits>()),
-    RANSAblBcApproach_(RANSAblBcApproach),
-    z0_(z0)
+           typename BcAlgTraits::ElemTraits>())
 {
   faceData_.add_cvfem_face_me(meFC_);
   elemData_.add_cvfem_surface_me(meSCS_);
@@ -65,7 +58,7 @@ SDRWallFuncAlg<BcAlgTraits>::SDRWallFuncAlg(
 template<typename BcAlgTraits>
 void SDRWallFuncAlg<BcAlgTraits>::execute()
 {
-  using SimdDataType = nalu_ngp::FaceElemSimdData<stk::mesh::NgpMesh>;
+  using SimdDataType = nalu_ngp::FaceElemSimdData<ngp::Mesh>;
 
   const auto& meta = realm_.meta_data();
 
@@ -88,8 +81,6 @@ void SDRWallFuncAlg<BcAlgTraits>::execute()
 
   auto* meFC = meFC_;
   auto* meSCS = meSCS_;
-  bool RANSAblBcApproach = RANSAblBcApproach_;
-  double z0 = z0_;
 
   const stk::mesh::Selector sel = meta.locally_owned_part()
     & stk::mesh::selectUnion(partVec_);
@@ -115,20 +106,14 @@ void SDRWallFuncAlg<BcAlgTraits>::execute()
         const int nodeR = meSCS->ipNodeMap(fdata.faceOrd)[ip];
         const int nodeL = meSCS->opposingNodes(fdata.faceOrd, ip);
 
-        DoubleType ypBip;
-        if (RANSAblBcApproach) {
-          // set ypBip to roughness height for wall function calculation
-          ypBip = z0;
+        DoubleType ypBip = 0.0;
+        for (int d=0; d < BcAlgTraits::nDim_; ++d) {
+          const DoubleType nj = v_area(ip, d) / aMag;
+          const DoubleType ej = 0.25 * (v_coord(nodeR, d) - v_coord(nodeL, d));
+          ypBip += nj * ej * nj * ej;
         }
-        else {
-          ypBip = 0.0;
-          for (int d=0; d < BcAlgTraits::nDim_; ++d) {
-            const DoubleType nj = v_area(ip, d) / aMag;
-            const DoubleType ej = 0.25 * (v_coord(nodeR, d) - v_coord(nodeL, d));
-            ypBip += nj * ej * nj * ej;
-          }
-          ypBip = stk::math::sqrt(ypBip);
-        }
+        ypBip = stk::math::sqrt(ypBip);
+
         const DoubleType wallFuncSdr =  v_fricVel(ip) / (
           sqrtBetaStar * kappa * ypBip);
 

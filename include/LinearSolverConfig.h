@@ -50,24 +50,11 @@ public:
   inline bool recomputePreconditioner() const
   { return recomputePreconditioner_; }
 
-  inline unsigned recomputePrecondFrequency() const
-  { return recomputePrecondFrequency_; }
-
   inline bool reusePreconditioner() const
   { return reusePreconditioner_; }
 
   inline bool useSegregatedSolver() const
   { return useSegregatedSolver_; }
-
-  /** User flag indicating whether equation systems must attempt to reuse linear
-   *  system data structures even for cases with mesh motion.
-   *
-   *  This option only affects decoupled overset system solves where the matrix
-   *  graph doesn't change, only the entries within the graph. This can be
-   *  controlled on a per-solver basis.
-   */
-  inline bool reuseLinSysIfPossible() const
-  { return reuseLinSysIfPossible_; }
 
   std::string get_method() const
   {return method_;}
@@ -75,9 +62,6 @@ public:
   std::string preconditioner_type() const
   { return preconditionerType_;}
 
-  std::string preconditioner_name() const
-  { return precond_;}
-  
   inline double tolerance() const { return tolerance_; }
   inline double finalTolerance() const { return finalTolerance_; }
 
@@ -98,11 +82,9 @@ protected:
   Teuchos::RCP<Teuchos::ParameterList> paramsPrecond_;
 
   bool recomputePreconditioner_{true};
-  unsigned recomputePrecondFrequency_{1}; /* positive integer. Recompute precond before all solves */
   bool reusePreconditioner_{false};
   bool useSegregatedSolver_{false};
   bool writeMatrixFiles_{false};
-  bool reuseLinSysIfPossible_{false};
 };
 
 class TpetraLinearSolverConfig : public LinearSolverConfig
@@ -137,12 +119,6 @@ public:
 
   bool useSegregatedSolver() const { return useSegregatedSolver_; }
 
-  inline bool simpleHypreMatrixAssemble() const
-  { return simpleHypreMatrixAssemble_; }
-
-  inline bool dumpHypreMatrixStats() const
-  { return dumpHypreMatrixStats_; }
-
 protected:
   //! List of HYPRE API calls and corresponding arugments to configure solver
   //! and preconditioner after they are created.
@@ -160,9 +136,6 @@ protected:
   //! Krylov vector space used for GMRES solvers
   int kspace_{1};
 
-  //! COGMRES solvers
-  int sync_alg_{2};
-
   /* BoomerAMG options */
 
   //! BoomerAMG Strong Threshold
@@ -172,9 +145,6 @@ protected:
   int bamgRelaxType_{6};
   int bamgRelaxOrder_{1};
   int bamgNumSweeps_{2};
-  int bamgNumDownSweeps_{1};
-  int bamgNumUpSweeps_{2};
-  int bamgNumCoarseSweeps_{2};
   int bamgMaxLevels_{20};
   int bamgInterpType_{0};
   std::string bamgEuclidFile_{""};
@@ -182,8 +152,6 @@ protected:
   bool isHypreSolver_{true};
   bool hasAbsTol_{false};
   bool useSegregatedSolver_{false};
-  bool simpleHypreMatrixAssemble_{false};
-  bool dumpHypreMatrixStats_{false};
 
 private:
   void boomerAMG_solver_config(const YAML::Node&);

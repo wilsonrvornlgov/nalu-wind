@@ -15,7 +15,6 @@
 #include <AssembleFaceElemSolverAlgorithm.h>
 #include <EquationSystem.h>
 #include <AlgTraits.h>
-#include <NaluEnv.h>
 #include <kernel/KernelBuilderLog.h>
 
 #include <stk_mesh/base/BulkData.hpp>

@@ -16,6 +16,9 @@
 #include <Realm.h>
 
 // the factory of aux functions
+#include <user_functions/SteadyThermal3dContactAuxFunction.h>
+#include <user_functions/SteadyThermal3dContactDtDxAuxFunction.h>
+#include <user_functions/SteadyThermalContactAuxFunction.h>
 #include <user_functions/SteadyTaylorVortexVelocityAuxFunction.h>
 #include <user_functions/SteadyTaylorVortexGradPressureAuxFunction.h>
 #include <user_functions/ConvectingTaylorVortexVelocityAuxFunction.h>
@@ -221,7 +224,17 @@ SolutionNormPostProcessing::analytical_function_factory(
   stk::mesh::Part *part)
 {
   AuxFunction *theAuxFunc = NULL;
-  if ( functionName == "SteadyTaylorVortexVelocity" ) {
+  // switch on the name found...
+  if ( functionName == "steady_2d_thermal" ) {
+    theAuxFunc = new SteadyThermalContactAuxFunction();
+  }
+  else if ( functionName == "steady_3d_thermal" ) {
+    theAuxFunc = new SteadyThermal3dContactAuxFunction();
+  }
+  else if ( functionName == "steady_3d_thermal_dtdx" ) {
+    theAuxFunc = new SteadyThermal3dContactDtDxAuxFunction(0,realm_.meta_data().spatial_dimension());
+  }
+  else if ( functionName == "SteadyTaylorVortexVelocity" ) {
     theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,realm_.meta_data().spatial_dimension());
   }
   else if ( functionName == "VariableDensityVelocity" ) {
@@ -269,15 +282,11 @@ SolutionNormPostProcessing::analytical_function_factory(
   else {
     throw std::runtime_error(
       "SolutionNormPostProcessing::setup: Only "
-      "SteadyTaylorVortexVelocity, "
-      "VariableDensityVelocity, VariableDensityNonIsoVelocity, "
-      "SteadyTaylorVortexGradPressure, "
-      "SteadyTaylorVortexGradPressure, VariableDensityNonIsoTemperature, "
-      "kovasznay, "
-      "kovasznay_dpdx, convecting_taylor_vortex, "
-      "convecting_taylor_vortex_dpdx, "
-      "wind_energy_taylor_vortex, wind_energy_taylor_vortex_dpdx, "
-      "BoussinesqNonIso "
+      "steady_2d_thermal, steady_3d_thermal, steady_3d_thermal_dtdx, SteadyTaylorVortexVelocity, "
+      "VariableDensityVelocity, VariableDensityNonIsoVelocity, SteadyTaylorVortexGradPressure, "
+      "SteadyTaylorVortexGradPressure, VariableDensityNonIsoTemperature, kovasznay, "
+      "kovasznay_dpdx, convecting_taylor_vortex, convecting_taylor_vortex_dpdx, "
+      "wind_energy_taylor_vortex, wind_energy_taylor_vortex_dpdx, BoussinesqNonIso "
       "user functions supported");
   }
 
@@ -338,9 +347,6 @@ SolutionNormPostProcessing::execute()
     
     int offSet = 0;
     for ( size_t j = 0; j < fieldPairVec_.size(); ++j ) {
-
-      // sync solution fields
-      fieldPairVec_[j].first->sync_to_host();
 
       // extract fields
       const double *dofField = (double*)stk::mesh::field_data(*(fieldPairVec_[j].first), b);

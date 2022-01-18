@@ -11,12 +11,6 @@
 #include <stk_mesh/base/GetEntities.hpp>
 #include <stk_mesh/base/Field.hpp>
 #include <stk_mesh/base/FieldBase.hpp>
-#include <stk_mesh/base/Ngp.hpp>
-#include <stk_mesh/base/NgpMesh.hpp>
-#include <stk_mesh/base/GetNgpMesh.hpp>
-#include <stk_mesh/base/NgpField.hpp>
-#include <stk_mesh/base/GetNgpField.hpp>
-#include <stk_mesh/base/Types.hpp>
 
 #include <master_element/MasterElement.h>
 #include <master_element/MasterElementFactory.h>
@@ -28,6 +22,7 @@
 #include "SimdInterface.h"
 #include "KokkosInterface.h"
 #include "Kokkos_Array.hpp"
+#include <stk_ngp/Ngp.hpp>
 
 #include "UnitTestUtils.h"
 #include "utils/CreateDeviceExpression.h"
@@ -128,7 +123,7 @@ void check_interpolation(
   const int num_int_pt = SCS ? AlgTraits::numScsIp_ : AlgTraits::numScvIp_;
   const int poly_order = num_nodes == 8 ? 1 : 2;
  
-  stk::mesh::NgpMesh& ngpMesh = stk::mesh::get_updated_ngp_mesh(bulk);
+  ngp::Mesh ngpMesh(bulk);
 
   ME    *me = SCS ? 
     dynamic_cast<ME*>(sierra::nalu::MasterElementRepo::get_surface_master_element(AlgTraits::topo_)):
@@ -162,7 +157,7 @@ void check_interpolation(
 
   const auto* const coordField = bulk.mesh_meta_data().coordinate_field();
   EXPECT_TRUE(coordField != nullptr);
-  stk::mesh::NgpField<double>& ngpCoordField = stk::mesh::get_updated_ngp_field<double>(*coordField);
+  ngp::Field<double> ngpCoordField(bulk, *coordField);
 
   Kokkos::View<DoubleType*,sierra::nalu::MemSpace> ngpResults("ngpResults", num_int_pt);
   Kokkos::View<DoubleType*,sierra::nalu::MemSpace>::HostMirror hostResults = Kokkos::create_mirror_view(ngpResults);
@@ -179,7 +174,7 @@ void check_interpolation(
 
   Kokkos::parallel_for(team_exec, KOKKOS_LAMBDA(const sierra::nalu::DeviceTeamHandleType& team)
   {
-    const stk::mesh::NgpMesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
+    const ngp::Mesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
 
     using ViewType = sierra::nalu::SharedMemView<DoubleType**,ShmemType>;
     ViewType shpfc = sierra::nalu::get_shmem_view_2D<DoubleType,TeamType,ShmemType>(team, num_int_pt, num_nodes);
@@ -190,7 +185,7 @@ void check_interpolation(
       const stk::mesh::Entity element = b[bktIndex];
       const stk::mesh::FastMeshIndex elemIndex = ngpMesh.fast_mesh_index(element);
 
-      const stk::mesh::NgpMesh::ConnectedNodes nodes = ngpMesh.get_nodes(stk::topology::ELEM_RANK, elemIndex);
+      const ngp::Mesh::ConnectedNodes nodes = ngpMesh.get_nodes(stk::topology::ELEM_RANK, elemIndex);
       Kokkos::Array<double,num_nodes> ws_field;
       for (int n = 0; n < num_nodes; ++n) {
         Kokkos::Array<double,3> coords;
@@ -228,7 +223,7 @@ void check_derivatives(
   const int num_int_pt = AlgTraits::numScsIp_;
   const int poly_order = num_nodes == 8 ? 1 : 2;
  
-  stk::mesh::NgpMesh& ngpMesh = stk::mesh::get_updated_ngp_mesh(bulk);
+  ngp::Mesh ngpMesh(bulk);
 
   ME    *me = dynamic_cast<ME*>(sierra::nalu::MasterElementRepo::get_surface_master_element(AlgTraits::topo_));
   auto *ngpMe = sierra::nalu::MasterElementRepo::get_surface_master_element<AlgTraits>();
@@ -260,7 +255,7 @@ void check_derivatives(
 
   const auto* const coordField = bulk.mesh_meta_data().coordinate_field();
   EXPECT_TRUE(coordField != nullptr);
-  stk::mesh::NgpField<double>& ngpCoordField = stk::mesh::get_updated_ngp_field<double>(*coordField);
+  ngp::Field<double> ngpCoordField(bulk, *coordField);
 
   Kokkos::View<DoubleType**,sierra::nalu::MemSpace> ngpResults("ngpResults", num_int_pt, dim);
   Kokkos::View<DoubleType**,sierra::nalu::MemSpace>::HostMirror hostResults = Kokkos::create_mirror_view(ngpResults);
@@ -281,7 +276,7 @@ void check_derivatives(
 
   Kokkos::parallel_for(team_exec, KOKKOS_LAMBDA(const sierra::nalu::DeviceTeamHandleType& team)
   {
-    const stk::mesh::NgpMesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
+    const ngp::Mesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
 
     sierra::nalu::SharedMemView<DoubleType**,ShmemType> coords = 
        sierra::nalu::get_shmem_view_2D<DoubleType,TeamType,ShmemType>(team,             num_nodes, dim);
@@ -296,7 +291,7 @@ void check_derivatives(
       const stk::mesh::Entity element = b[bktIndex];
       const stk::mesh::FastMeshIndex elemIndex = ngpMesh.fast_mesh_index(element);
 
-      const stk::mesh::NgpMesh::ConnectedNodes nodes = ngpMesh.get_nodes(stk::topology::ELEM_RANK, elemIndex);
+      const ngp::Mesh::ConnectedNodes nodes = ngpMesh.get_nodes(stk::topology::ELEM_RANK, elemIndex);
       Kokkos::Array<double,num_nodes> ws_field;
       for (int n = 0; n < num_nodes; ++n) {
         Kokkos::Array<double,3> cord;
@@ -332,7 +327,7 @@ protected:
     MasterElementHexSerialNGP()
     : comm(MPI_COMM_WORLD), spatialDimension(3),
       meta(spatialDimension), bulk(meta, comm),
-      ngpMesh(stk::mesh::get_updated_ngp_mesh(bulk)),
+      ngpMesh(bulk),
       poly_order(1), topo(stk::topology::HEX_8)
     {
     }
@@ -355,7 +350,7 @@ protected:
     unsigned spatialDimension;
     stk::mesh::MetaData meta;
     stk::mesh::BulkData bulk;
-    stk::mesh::NgpMesh ngpMesh;
+    ngp::Mesh ngpMesh;
     unsigned poly_order;
     stk::topology topo;
 };

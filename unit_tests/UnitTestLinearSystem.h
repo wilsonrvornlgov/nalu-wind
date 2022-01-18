@@ -14,7 +14,6 @@
 #include "LinearSystem.h"
 #include "EquationSystem.h"
 #include "utils/CreateDeviceExpression.h"
-#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace unit_test_utils {
 
@@ -38,7 +37,7 @@ template<typename LHSView, typename RHSView>
 KOKKOS_FUNCTION
 void edgeSumInto(
     unsigned numEntities,
-    const stk::mesh::NgpMesh::ConnectedNodes&  entities,
+    const ngp::Mesh::ConnectedNodes&  entities,
     const sierra::nalu::SharedMemView<const double*,sierra::nalu::DeviceShmem> & rhs,
     const sierra::nalu::SharedMemView<const double**,sierra::nalu::DeviceShmem> & lhs,
     unsigned numDof,
@@ -79,11 +78,13 @@ public:
     isEdge_(isEdge), numDof_(nDof)
   {}
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   TestCoeffApplier(const TestCoeffApplier&) = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
-  ~TestCoeffApplier() = default;
+  KOKKOS_FUNCTION
+  ~TestCoeffApplier()
+  {
+  }
 
 KOKKOS_FUNCTION
 void resetRows(unsigned /*numNodes*/,
@@ -97,7 +98,7 @@ void resetRows(unsigned /*numNodes*/,
 
   KOKKOS_FUNCTION
   void operator()(unsigned numEntities,
-                  const stk::mesh::NgpMesh::ConnectedNodes& entities,
+                  const ngp::Mesh::ConnectedNodes& entities,
                   const sierra::nalu::SharedMemView<int*, sierra::nalu::DeviceShmem> & /*localIds*/,
                   const sierra::nalu::SharedMemView<int*, sierra::nalu::DeviceShmem> & /*sortPermutation*/,
                   const sierra::nalu::SharedMemView<const double*, sierra::nalu::DeviceShmem> & rhs,
@@ -209,7 +210,7 @@ public:
 
   virtual void sumInto(
     unsigned  numEntities,
-    const stk::mesh::NgpMesh::ConnectedNodes&  entities,
+    const ngp::Mesh::ConnectedNodes&  entities,
     const sierra::nalu::SharedMemView<const double*,sierra::nalu::DeviceShmem> & rhs,
     const sierra::nalu::SharedMemView<const double**,sierra::nalu::DeviceShmem> & lhs,
     const sierra::nalu::SharedMemView<int*,sierra::nalu::DeviceShmem> &  /* localIds */,
@@ -313,7 +314,7 @@ public:
   using TestLinearSystem::sumInto;
   virtual void sumInto(
     unsigned numEntities,
-    const stk::mesh::NgpMesh::ConnectedNodes&  entities,
+    const ngp::Mesh::ConnectedNodes&  entities,
     const sierra::nalu::SharedMemView<const double*,sierra::nalu::DeviceShmem> & rhs,
     const sierra::nalu::SharedMemView<const double**,sierra::nalu::DeviceShmem> & lhs,
     const sierra::nalu::SharedMemView<int*,sierra::nalu::DeviceShmem> &  /* localIds */,

@@ -75,14 +75,14 @@ enum EquationType {
   EQ_MESH_DISPLACEMENT = 7,
   EQ_SPEC_DISS_RATE = 8,
   EQ_MASS_FRACTION = 9,
-  EQ_PNG   = 10,
-  EQ_PNG_P = 11,
-  EQ_PNG_Z = 12,
-  EQ_PNG_H = 13,
-  EQ_PNG_U = 14,
-  EQ_PNG_TKE = 15, // FIXME... Last PNG managed like this..
-  EQ_WALL_DISTANCE = 16,
-  EQ_GAMMA_TRANS = 17,
+  EQ_TAMS = 10,
+  EQ_PNG   = 11,
+  EQ_PNG_P = 12,
+  EQ_PNG_Z = 13,
+  EQ_PNG_H = 14,
+  EQ_PNG_U = 15,
+  EQ_PNG_TKE = 16, // FIXME... Last PNG managed like this..
+  EQ_WALL_DISTANCE = 17,
   EquationSystemType_END
 };
 
@@ -97,6 +97,7 @@ static const std::string EquationTypeMap[] = {
   "MeshVelocity",
   "Specific_Dissipation_Rate",
   "Mass_Fraction",
+  "TAMS",
   "PNG",
   "PNG_P",
   "PNG_Z",
@@ -164,9 +165,7 @@ enum TurbulenceModel {
   WALE = 3,
   SST = 4,
   SST_DES = 5,
-  SST_AMS = 6,
-  SST_IDDES = 7,
-  SST_BLT = 8,
+  SST_TAMS = 6,
   TurbulenceModel_END
 };  
 
@@ -178,9 +177,7 @@ static const std::string TurbulenceModelNames[] = {
   "wale",
   "sst",
   "sst_des",
-  "sst_ams",
-  "sst_iddes",
-  "sst_blt"};
+  "sst_tams"};
 
 enum TurbulenceModelConstant {
   TM_cMu = 0,
@@ -216,31 +213,7 @@ enum TurbulenceModelConstant {
   TM_forBlKol = 30,
   TM_forFac = 31,
   TM_v2cMu = 32,
-  TM_aspRatSwitch = 33,
-  TM_periodicForcingLengthX = 34,
-  TM_periodicForcingLengthY = 35,
-  TM_periodicForcingLengthZ = 36,
-  TM_sigmaMax = 37,
-  TM_ch1 = 38,
-  TM_ch2 = 39,
-  TM_ch3 = 40,
-  TM_tau_des = 41,
-  TM_iddes_Cw = 42,
-  TM_iddes_Cdt1 = 43,
-  TM_iddes_Cdt2 = 44,
-  TM_iddes_Cl = 45,
-  TM_iddes_Ct = 46,
-  TM_abl_bndtw = 47,
-  TM_abl_deltandtw = 48,
-  TM_abl_sigma = 49,
-  TM_ams_peclet_offset = 50,
-  TM_ams_peclet_slope = 51,
-  TM_ams_peclet_scale = 52,
-  TM_caOne = 53,
-  TM_caTwo = 54,
-  TM_ceOne = 55,
-  TM_ceTwo = 56,
-  TM_END = 57
+  TM_END = 33
 };
 
 static const std::string TurbulenceModelConstantNames[] = {
@@ -277,59 +250,20 @@ static const std::string TurbulenceModelConstantNames[] = {
   "forcingBlKol",
   "forcingFactor",
   "v2cMu",
-  "aspectRatioSwitch",
-  "periodicForcingLengthX",
-  "periodicForcingLengthY",
-  "periodicForcingLengthZ",
-  "sigmaMax",
-  "ch1",
-  "ch2",
-  "ch3",
-  "tau_des",
-  "iddes_Cw",
-  "iddes_Cdt1",
-  "iddes_Cdt2",
-  "iddes_Cl",
-  "iddes_Ct",
-  "abl_bndtw",
-  "abl_deltandtw",
-  "abl_sigma",
-  "ams_peclet_offset",
-  "ams_peclet_slope",
-  "ams_peclet_scale",
   "END"};
 
 enum ActuatorType {
   ActLinePointDrag = 0,
   ActLineFAST = 1,
-  ActLineFASTNGP = 2,
-  AdvActLineFASTNGP = 3,
-  ActDiskFAST = 4,
-  ActDiskFASTNGP = 5,
-  ActLineSimple = 6,
-  ActLineSimpleNGP = 7,
+  ActDiskFAST = 2,
   ActuatorType_END
 };
 
-static std::map<std::string, ActuatorType> ActuatorTypeMap = {
-  {"ActLinePointDrag", ActuatorType::ActLinePointDrag},
-  {"ActLineFAST", ActuatorType::ActLineFAST},
-  {"ActDiskFAST", ActuatorType::ActDiskFAST},
-  {"ActLineSimple",ActuatorType::ActLineSimple},
-  {"ActLineSimpleNGP",ActuatorType::ActLineSimpleNGP},
-  {"ActLineFASTNGP", ActuatorType::ActLineFASTNGP},
-  {"AdvActLineFASTNGP", ActuatorType::AdvActLineFASTNGP},
-  {"ActDiskFASTNGP", ActuatorType::ActDiskFASTNGP}};
-
-
-enum class EntrainmentMethod { SPECIFIED = 0, COMPUTED = 1, CLASSIC = 2 };
-
-static std::map<std::string, EntrainmentMethod> EntrainmentMethodMap
-{
-  {"computed", EntrainmentMethod::COMPUTED}, 
-  {"specified", EntrainmentMethod::SPECIFIED}
-};
-
+ static std::map<std::string, ActuatorType> ActuatorTypeMap = {
+     {"ActLinePointDrag",ActuatorType::ActLinePointDrag},
+     {"ActLineFAST",ActuatorType::ActLineFAST},
+     {"ActDiskFAST",ActuatorType::ActDiskFAST}
+ };
 
 } // namespace nalu
 } // namespace Sierra

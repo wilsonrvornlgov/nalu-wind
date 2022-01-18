@@ -13,9 +13,7 @@
 #define TKERODINODEKERNEL_H          
 
 #include "node_kernels/NodeKernel.h"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace stk{
 namespace mesh{
@@ -34,9 +32,10 @@ class TKERodiNodeKernel : public NGPNodeKernel<TKERodiNodeKernel>
 public:
   TKERodiNodeKernel(const stk::mesh::MetaData&, const SolutionOptions&);
 
-  TKERodiNodeKernel() = delete;
+  KOKKOS_FUNCTION
+  TKERodiNodeKernel() = default;
   
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~TKERodiNodeKernel() = default;
 
   virtual void setup(Realm &) override;
@@ -49,10 +48,10 @@ public:
 
 private:
 
-  stk::mesh::NgpField<double> dhdx_;
-  stk::mesh::NgpField<double> specificHeat_;
-  stk::mesh::NgpField<double> tvisc_;
-  stk::mesh::NgpField<double> dualNodalVolume_;
+  ngp::Field<double> dhdx_;
+  ngp::Field<double> specificHeat_;
+  ngp::Field<double> tvisc_;
+  ngp::Field<double> dualNodalVolume_;
 
   const unsigned dhdxID_           {stk::mesh::InvalidOrdinal};
   const unsigned specificHeatID_   {stk::mesh::InvalidOrdinal};

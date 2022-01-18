@@ -12,7 +12,6 @@
 
 // basic c++
 #include <cmath>
-#include <stdexcept>
 
 namespace sierra{
 namespace nalu{

@@ -14,9 +14,7 @@
 #include "node_kernels/NodeKernel.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace sierra{
 namespace nalu{
@@ -30,9 +28,10 @@ public:
     const stk::mesh::BulkData&,
     const SolutionOptions&);
 
-  MomentumBoussinesqNodeKernel() = delete;
+  KOKKOS_FUNCTION
+  MomentumBoussinesqNodeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~MomentumBoussinesqNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -44,8 +43,8 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  stk::mesh::NgpField<double> dualNodalVolume_;
-  stk::mesh::NgpField<double> temperature_;
+  ngp::Field<double> dualNodalVolume_;
+  ngp::Field<double> temperature_;
   const int nDim_;
   NodeKernelTraits::DblType tRef_;
   NodeKernelTraits::DblType rhoRef_;

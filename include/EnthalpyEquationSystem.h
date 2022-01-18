@@ -16,7 +16,7 @@
 
 #include <EquationSystem.h>
 #include <FieldTypeDef.h>
-#include <NaluParsedTypes.h>
+#include <NaluParsing.h>
 
 #include "ngp_algorithms/NodalGradAlgDriver.h"
 #include "ngp_algorithms/EnthalpyEffDiffFluxCoeffAlg.h"
@@ -96,6 +96,7 @@ public:
   
   void solve_and_update();
   void post_iter_work_dep();
+  void post_adapt_work();
   void extract_temperature();
   void post_converged_work();
   void initial_work();

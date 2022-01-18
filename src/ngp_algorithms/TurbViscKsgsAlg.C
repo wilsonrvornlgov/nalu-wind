@@ -11,12 +11,10 @@
 #include "ngp_algorithms/TurbViscKsgsAlg.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpTypes.h"
-#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "utils/StkHelpers.h"
 
 #include "stk_mesh/base/MetaData.hpp"
-#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra{
 namespace nalu{
@@ -37,7 +35,7 @@ TurbViscKsgsAlg::TurbViscKsgsAlg(
 void
 TurbViscKsgsAlg::execute()
 {
-  using Traits = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = nalu_ngp::NGPMeshTraits<ngp::Mesh>;
 
   const auto& meta = realm_.meta_data();
 
@@ -48,28 +46,21 @@ TurbViscKsgsAlg::execute()
   const auto& meshInfo = realm_.mesh_info();
   const auto ngpMesh = meshInfo.ngp_mesh();
   const auto& fieldMgr = meshInfo.ngp_field_manager();
-  auto tke = fieldMgr.get_field<double>(tke_);
-  auto density = fieldMgr.get_field<double>(density_);
-  auto dualNodalVolume = fieldMgr.get_field<double>(dualNodalVolume_);
+  const auto tke = fieldMgr.get_field<double>(tke_);
+  const auto density = fieldMgr.get_field<double>(density_);
+  const auto dualNodalVolume = fieldMgr.get_field<double>(dualNodalVolume_);
   auto tvisc = fieldMgr.get_field<double>(tvisc_);
 
-  tke.sync_to_device();
-  density.sync_to_device();
-  dualNodalVolume.sync_to_device();
-  tvisc.sync_to_device();
-
-  const DblType invDim = 1.0 / static_cast<double>(meta.spatial_dimension());
   const DblType cmuEps = cmuEps_;
+  const DblType invNdim = 1.0 / meta.spatial_dimension();
 
   nalu_ngp::run_entity_algorithm(
     "TurbViscKsgsAlg",
     ngpMesh, stk::topology::NODE_RANK, sel,
     KOKKOS_LAMBDA(const Traits::MeshIndex& meshIdx) {
-      const DblType filter = stk::math::pow(dualNodalVolume.get(meshIdx, 0), 
-          invDim);
+      const DblType filter = std::pow(dualNodalVolume.get(meshIdx, 0), invNdim);
       tvisc.get(meshIdx, 0) = cmuEps*density.get(meshIdx, 0)*std::sqrt(tke.get(meshIdx, 0))*filter;
     });
-  tvisc.modify_on_device();
 }
 
 } // namespace nalu

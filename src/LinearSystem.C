@@ -32,11 +32,10 @@
 #include <stk_mesh/base/Selector.hpp>
 #include <stk_mesh/base/GetBuckets.hpp>
 #include <stk_mesh/base/Part.hpp>
-#include "stk_mesh/base/NgpMesh.hpp"
 #include <stk_topology/topology.hpp>
 #include <stk_mesh/base/FieldParallel.hpp>
 
-#include "stk_mesh/base/NgpFieldParallel.hpp"
+#include "stk_ngp/NgpFieldParallel.hpp"
 
 #include <Teuchos_VerboseObject.hpp>
 #include <Teuchos_FancyOStream.hpp>
@@ -97,12 +96,6 @@ bool LinearSystem::useSegregatedSolver() const {
   return linearSolver_ ? linearSolver_->getConfig()->useSegregatedSolver() : false;
 }
 
-const LinearSolverConfig& LinearSystem::config() const
-{
-  ThrowAssert(linearSolver_ != nullptr);
-  return *(linearSolver_->getConfig());
-}
-
 // static method
 LinearSystem *LinearSystem::create(Realm& realm, const unsigned numDof, EquationSystem *eqSys, LinearSolver *solver)
 {
@@ -125,6 +118,7 @@ LinearSystem *LinearSystem::create(Realm& realm, const unsigned numDof, Equation
   case PT_HYPRE:
     realm.hypreIsActive_ = true;
     return new HypreLinearSystem(realm, numDof, eqSys, solver);
+    break;
 
   case PT_HYPRE_SEGREGATED:
     realm.hypreIsActive_ = true;
@@ -148,8 +142,27 @@ void LinearSystem::sync_field(const stk::mesh::FieldBase *field)
     &fieldMgr.get_field<double>(field->mesh_meta_data_ordinal())
   };
 
-  stk::mesh::copy_owned_to_shared(realm_.bulk_data(), ngpFields);
+  ngp::copy_owned_to_shared(realm_.bulk_data(), ngpFields);
 }
+
+#ifndef KOKKOS_ENABLE_CUDA
+KOKKOS_FUNCTION
+void LinearSystem::DefaultHostOnlyCoeffApplier::operator()(
+                        unsigned numEntities,
+                        const ngp::Mesh::ConnectedNodes& entities,
+                        const SharedMemView<int*,DeviceShmem> & localIds,
+                        const SharedMemView<int*,DeviceShmem> & sortPermutation,
+                        const SharedMemView<const double*,DeviceShmem> & rhs,
+                        const SharedMemView<const double**,DeviceShmem> & lhs,
+                        const char * trace_tag)
+{
+  linSys_.sumInto(numEntities, entities, rhs, lhs, localIds, sortPermutation, trace_tag);
+
+  if (linSys_.equationSystem()->extractDiagonal_) {
+    linSys_.equationSystem()->save_diagonal_term(numEntities, entities, lhs);
+  }
+}
+#endif
 
 } // namespace nalu
 } // namespace Sierra

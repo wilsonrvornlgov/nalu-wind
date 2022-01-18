@@ -55,8 +55,7 @@ public:
   // called by others; Realms
   void load(const YAML::Node & node);
   void breadboard() {}
-  void initialize_prolog();
-  void initialize_epilog();
+  void initialize();
 
   // called by others; time integrator; virtual
   void populate_initial_condition() {}

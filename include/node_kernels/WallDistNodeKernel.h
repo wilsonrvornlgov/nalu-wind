@@ -14,9 +14,7 @@
 #include "node_kernels/NodeKernel.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -28,9 +26,9 @@ class WallDistNodeKernel : public NGPNodeKernel<WallDistNodeKernel>
 public:
   WallDistNodeKernel(stk::mesh::BulkData&);
 
-  KOKKOS_DEFAULTED_FUNCTION WallDistNodeKernel() = default;
+  KOKKOS_FUNCTION WallDistNodeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION ~WallDistNodeKernel() = default;
+  KOKKOS_FUNCTION ~WallDistNodeKernel() = default;
 
   virtual void setup(Realm&) override;
 
@@ -41,7 +39,7 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  stk::mesh::NgpField<double> dualNodalVolume_;
+  ngp::Field<double> dualNodalVolume_;
 
   unsigned dualNodalVolumeID_ {stk::mesh::InvalidOrdinal};
 };

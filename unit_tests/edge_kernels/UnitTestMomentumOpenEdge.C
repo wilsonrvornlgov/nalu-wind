@@ -51,7 +51,7 @@ static constexpr double lhs[24][24] = {
 }
 }
 
-TEST_F(MomentumEdgeHex8Mesh, NGP_open_edge)
+TEST_F(MomentumKernelHex8Mesh, NGP_open_edge)
 {
   if (bulk_.parallel_size() > 1) return;
 
@@ -61,6 +61,7 @@ TEST_F(MomentumEdgeHex8Mesh, NGP_open_edge)
 
   // Setup solution options for default advection kernel
   solnOpts_.meshMotion_ = false;
+  solnOpts_.meshDeformation_ = false;
   solnOpts_.externalMeshDeformation_ = false;
 
   auto* part = meta_.get_part("surface_2");
@@ -73,8 +74,7 @@ TEST_F(MomentumEdgeHex8Mesh, NGP_open_edge)
       sierra::nalu::AlgTraitsQuad4Hex8>(
       meta_, &solnOpts_, viscosity_,
       helperObjs.assembleFaceElemSolverAlg->faceDataNeeded_,
-      helperObjs.assembleFaceElemSolverAlg->elemDataNeeded_,
-      sierra::nalu::EntrainmentMethod::COMPUTED));
+      helperObjs.assembleFaceElemSolverAlg->elemDataNeeded_));
 
   helperObjs.assembleFaceElemSolverAlg->activeKernels_.push_back(kernel.get());
 

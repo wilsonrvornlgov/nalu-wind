@@ -1,15 +1,13 @@
 #ifndef FRAMEBASE_H
 #define FRAMEBASE_H
 
-#include "NgpMotion.h"
+#include "MotionBase.h"
 
 // stk base header files
 #include "stk_mesh/base/CoordinateSystems.hpp"
 #include "stk_mesh/base/BulkData.hpp"
 #include "stk_mesh/base/Field.hpp"
 #include "stk_mesh/base/MetaData.hpp"
-
-namespace YAML { class Node; }
 
 namespace sierra{
 namespace nalu{
@@ -19,30 +17,41 @@ class FrameBase
 public:
   FrameBase(
     stk::mesh::BulkData&,
-    const YAML::Node&);
+    const YAML::Node&,
+    bool);
 
-  virtual ~FrameBase();
+  virtual ~FrameBase()
+  {
+  }
 
   void setup();
 
-  void compute_centroid_on_parts(
-    mm::ThreeDVecType& centroid);
+  virtual void update_coordinates_velocity(const double) = 0;
 
-  void set_computed_centroid(const mm::ThreeDVecType& centroid)
+  virtual const MotionBase::TransMatType& get_inertial_frame() const
   {
-    for (size_t i=0; i < motionKernels_.size(); i++)
-      motionKernels_[i]->set_computed_centroid(centroid);
+    throw std::runtime_error("FrameNonInertial: Invalid access of inertial frame");
+  }
+
+  void set_ref_frame( MotionBase::TransMatType& frame )
+  {
+    refFrame_ = frame;
+  }
+
+  void set_computed_centroid( std::vector<double>& centroid )
+  {
+    for (size_t i=0; i < meshMotionVec_.size(); i++)
+      meshMotionVec_[i]->set_computed_centroid(centroid);
+  }
+
+  bool is_inertial() const
+  {
+    return isInertial_;
   }
 
   virtual void post_compute_geometry()
   {
   }
-
-  stk::mesh::PartVector get_partvec() {
-    return partVec_;
-  };
-
-  bool is_deforming(){ return isDeforming_; }
 
 protected:
   //! Reference to the STK Mesh BulkData object
@@ -51,11 +60,11 @@ protected:
   //! Reference to the STK Mesh MetaData object
   stk::mesh::MetaData& meta_;
 
-  /** Motion/Transformation vector
+  /** Motion vector
    *
-   *  A vector of size number of motion/transformation groups
+   *  A vector of size number of motion groups
    */
-  std::vector<std::unique_ptr<NgpMotion>> motionKernels_;
+  std::vector<std::unique_ptr<MotionBase>> meshMotionVec_;
 
   /** Motion parts
    *
@@ -69,10 +78,16 @@ protected:
    */
   stk::mesh::PartVector partVecBc_;
 
-  bool computeCentroid_ = false;
+  /** Reference frame
+   *
+   * A 4x4 matrix that defines the reference frame for subsequent motions
+   * It is initialized to an identity matrix
+   */
+  MotionBase::TransMatType refFrame_ = MotionBase::identityMat_;
 
-  // flag to denote if mesh deformation exists
-  bool isDeforming_ = false;
+  const bool isInertial_;
+
+  bool computeCentroid_ = false;
 
 private:
   FrameBase() = delete;
@@ -81,6 +96,9 @@ private:
   void load(const YAML::Node&);
 
   void populate_part_vec(const YAML::Node&);
+
+  void compute_centroid_on_parts(
+    std::vector<double> &centroid);
 };
 
 } // nalu

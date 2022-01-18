@@ -15,7 +15,6 @@
 #include <DgInfo.h>
 #include <FieldTypeDef.h>
 #include <LinearSystem.h>
-#include <NaluEnv.h>
 #include <NonConformalInfo.h>
 #include <NonConformalManager.h>
 #include <Realm.h>

@@ -44,6 +44,7 @@ TEST_F(ContinuityEdgeHex8Mesh, NGP_advection)
 
   // Setup solution options for default advection kernel
   solnOpts_.meshMotion_ = false;
+  solnOpts_.meshDeformation_ = false;
   solnOpts_.externalMeshDeformation_ = false;
   solnOpts_.mdotInterpRhoUTogether_ = true;
 

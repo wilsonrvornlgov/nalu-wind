@@ -11,12 +11,10 @@
 #include "ngp_algorithms/EffDiffFluxCoeffAlg.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpTypes.h"
-#include "ngp_utils/NgpFieldManager.h"
 #include "Realm.h"
 #include "utils/StkHelpers.h"
 
 #include "stk_mesh/base/MetaData.hpp"
-#include <stk_mesh/base/NgpMesh.hpp>
 
 namespace sierra {
 namespace nalu {
@@ -43,7 +41,7 @@ EffDiffFluxCoeffAlg::EffDiffFluxCoeffAlg(
 void
 EffDiffFluxCoeffAlg::execute()
 {
-  using Traits = nalu_ngp::NGPMeshTraits<stk::mesh::NgpMesh>;
+  using Traits = nalu_ngp::NGPMeshTraits<ngp::Mesh>;
 
   const auto& meta = realm_.meta_data();
 

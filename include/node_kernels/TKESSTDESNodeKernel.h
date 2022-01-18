@@ -15,9 +15,7 @@
 #include "FieldTypeDef.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -29,9 +27,10 @@ class TKESSTDESNodeKernel : public NGPNodeKernel<TKESSTDESNodeKernel>
 public:
   TKESSTDESNodeKernel(const stk::mesh::MetaData&);
 
-  TKESSTDESNodeKernel() = delete;
+  KOKKOS_FORCEINLINE_FUNCTION
+  TKESSTDESNodeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~TKESSTDESNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -43,14 +42,14 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  stk::mesh::NgpField<double> tke_;
-  stk::mesh::NgpField<double> sdr_;
-  stk::mesh::NgpField<double> density_;
-  stk::mesh::NgpField<double> tvisc_;
-  stk::mesh::NgpField<double> dudx_;
-  stk::mesh::NgpField<double> dualNodalVolume_;
-  stk::mesh::NgpField<double> maxLenScale_;
-  stk::mesh::NgpField<double> fOneBlend_;
+  ngp::Field<double> tke_;
+  ngp::Field<double> sdr_;
+  ngp::Field<double> density_;
+  ngp::Field<double> tvisc_;
+  ngp::Field<double> dudx_;
+  ngp::Field<double> dualNodalVolume_;
+  ngp::Field<double> maxLenScale_;
+  ngp::Field<double> fOneBlend_;
 
   unsigned tkeID_             {stk::mesh::InvalidOrdinal};
   unsigned sdrID_             {stk::mesh::InvalidOrdinal};

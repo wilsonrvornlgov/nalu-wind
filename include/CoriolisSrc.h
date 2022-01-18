@@ -23,10 +23,10 @@ class CoriolisSrc {
 public:
   CoriolisSrc(const SolutionOptions& solnOpts);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   CoriolisSrc() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~CoriolisSrc() = default;
 
   static constexpr int nDim_ = 3;

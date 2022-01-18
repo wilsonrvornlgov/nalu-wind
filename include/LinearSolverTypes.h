@@ -18,7 +18,6 @@
 #include <Tpetra_CrsMatrix.hpp>
 #include <Tpetra_Vector.hpp>
 #include <Tpetra_MultiVector.hpp>
-#include <Tpetra_Operator.hpp>
 
 // Forward declare templates
 namespace Teuchos {
@@ -94,8 +93,6 @@ struct LinSys {
   using Preconditioner    = Ifpack2::Preconditioner<Scalar, LocalOrdinal, GlobalOrdinal, Node>;
 
   using EntityToLIDView = Kokkos::View<LocalOrdinal*, Kokkos::LayoutRight, LinSysMemSpace>;
-  using ConstEntityToLIDView = Kokkos::View<const LocalOrdinal*, Kokkos::LayoutRight, LinSysMemSpace>;
-
 };
 
 

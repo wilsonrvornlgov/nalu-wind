@@ -37,7 +37,8 @@ public:
 
   KOKKOS_FUNCTION
   Tri3DSCS();
-  KOKKOS_FUNCTION virtual ~Tri3DSCS() {}
+  KOKKOS_FUNCTION
+  virtual ~Tri3DSCS() = default;
 
   using AlgTraits = AlgTraitsTri3;
   using MasterElement::determinant;

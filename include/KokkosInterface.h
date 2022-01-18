@@ -19,8 +19,6 @@
 
 #ifdef KOKKOS_ENABLE_CUDA
 #define NALU_ALIGNED alignas(sizeof(double))
-#elif defined(NALU_USE_POWER9_ALIGNMENT)
-#define NALU_ALIGNED alignas(16)
 #else
 #define NALU_ALIGNED alignas(KOKKOS_MEMORY_ALIGNMENT)
 #endif

@@ -1,8 +1,0 @@
-.git
-examples
-reg_tests
-build*
-wind-utils
-python
-**/tests
-.*

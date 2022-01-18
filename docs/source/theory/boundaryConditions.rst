@@ -26,7 +26,6 @@ specified user value. For all Dirichlet values, the row is zeroed with a
 unity placed on the diagonal. The residual is zeroed and set to the
 difference between the current value and user specified value.
 
-
 Wall Boundary Conditions
 ++++++++++++++++++++++++
 
@@ -34,8 +33,6 @@ Continuity
 ~~~~~~~~~~
 
 Continuity uses a no-op.
-
-.. _wall_bc_momentum:
 
 Momentum
 ~~~~~~~~
@@ -741,8 +738,6 @@ grid spacing. The boundary condition is given by,
 
 which is valid for :math:`y^{+} < 3`.
 
-.. _kwsst_high_re_bc:
-
 Turbulent Kinetic Energy and Specific Dissipation SST High Reynolds Number Boundary conditions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -797,49 +792,6 @@ surface as,
                      + \left(1 - \epsilon - \tau \right) K \right].
 
 
-SST RANS Model for Atmospheric Boundary Layer
-+++++++++++++++++++++++++++++++++++++++++++++++++++
-
-The following boundary conditions simulate the Atmospheric Boundary Layer, as described in Bautista, :cite:`Bautista:2011` and :cite:`Bautista:2015`. The Nalu-Wind SST RANS implementation matches the Monin-Obukhov profile when used with the model constants from Table-A I-1 (Boundreault, 2011) in :cite:`Bautista:2011` and the meshing method described  in :cite:`Bautista:2015`. The mesh described in :cite:`Bautista:2015` gives the Monin-Obukhov profile for roughness height 0.1. When the roughness height is decreased, the mesh must be refined near the wall. For example, for the :cite:`Bautista:2015` ABL test case using roughness height 0.001 instead of 0.1, the mesh size needs to be halved near the wall. 
-    
-The :math:`k` and :math:`\omega` boundary conditions are the same as in the :ref:`k-omega SST boundary conditions <kwsst_high_re_bc>`:
-
-.. math:: k = \frac{u_{\tau}^{2}}{\sqrt{\beta^*}},
-
-and 
-
-.. math:: \omega = \frac{u_{\tau}}{\sqrt{\beta^*} \kappa y}.
-
-The momentum boundary condition is a no-slip Dirichlet condition, :math:`u_i=0`, as described in the :ref:`momentum wall boundary conditions <wall_bc_momentum>`.
-
-The streamwise and spanwise boundary conditions are periodic, as described in the :ref:`periodic boundary conditions <periodic_bc>`.
-
-The :math:`k`, :math:`\omega`, and :math:`u` wall boundary conditions are set in the input file by specifying a wall boundary condition with ``RANS_abl_bc``. The input file must also specify a height and the velocity at that height with ``reference_height`` and ``reference_velocity``. 
-
-.. literalinclude:: ransAbl_wallUserData.yaml
-   :language: yaml
-
-This height, :math:`h`, and velocity, :math:`u_h`, could, for example, be the hub height of a wind turbine and the velocity measured at that height. 
-
-The input file should also include a momentum source term, ``momentum``. 
-
-.. literalinclude:: ransAbl_sourceTerm.yaml
-   :language: yaml
-
-The momentum source term, :math:`dp/dx`, is calculated by balancing this pressure gradient with the wall shear stress, :math:`\tau_{w}`.
-
-.. math:: \frac{dp}{dx} V = \tau_{w} A
-
-where :math:`V` is the volume of the domain and :math:`A` is the area of the domain that touches the ground. Cancelling the length and width of the domain and dividing by the height of the domain, :math:`H`, gives
-
-.. math:: \frac{dp}{dx} = \frac{\rho u_{\tau}^2}{H}
-
-:math:`u_{\tau}` is calculated from the Monin-Obukhov profile,
-
-.. math:: u_{\tau}=\frac{u_h \kappa}{log((h+z_0)/z_0)}
-
-where :math:`\kappa` is the Von K{\'a}rm{\'a}n constant and :math:`z_0` is the roughness height.
-
 .. _theory_open_bc:
 
 Open Boundary Condition
@@ -850,10 +802,7 @@ assembled by iterating faces and the boundary integration points on the
 exposed face. The parent element is also required since oftentimes
 gradients are used (for momentum). For an open boundary condition the
 flow can either leave or enter the domain depending on what the computed
-mass flow rate at the exposed boundary integration point is.  Two options
-are available computing the velocity of the entrained flow---either the
-normal velocity at the integration point is used or a specified normal
-velocity is used.  The tangential components are always specified.
+mass flow rate at the exposed boundary integration point is.
 
 Continuity
 ~~~~~~~~~~
@@ -863,9 +812,7 @@ value is stored and used for the other equations that require advection.
 The same formula is used for the pressure-stabilized mass flow rate.
 However, the local pressure gradient for each boundary contribution is
 based on the difference between the interior integration point and the
-user-specified pressure which takes on the boundary value. This can
-optionally be modified to be a ``total pressure"---removing the kinetic
-energy associated with entrainment at the open. The interior
+user-specified pressure which takes on the boundary value. The interior
 integration point is determined by linear interpolation. For CVFEM, full
 elemental averaging is used while in EBVC discretization, the midpoint
 value between the nearest node and opposing node to the boundary
@@ -892,7 +839,7 @@ a backward facing step with a single inflow, side periodic, top wall and open
 boundary. Not that the ability for the continuity solve to be well conditioned
 may require an interior Dirichlet on pressure as the open pressure specification
 for the global correction algorithm is lacking. In most cases, a Dirichlet
-condition is not actually required as the nullspace of the continuity system
+condition is not actually required as the NULL-space of the continuity system
 may not be found in the solve.
 
 
@@ -927,12 +874,12 @@ non-orthogonal corrections used. In this formulation, the area vector is
 taken to be the exposed area vector. Non-orthogonal terms are noted when
 the area vector and edge vector are not aligned.
 
-For advection, if the flow is leaving the domain, we simply advect the
+For advection, If the flow is leaving the domain, we simply advect the
 nearest nodal value to the boundary integration point. If the flow is
 coming into the domain, we simply confine the flow to be normal to the
 open boundary integration point area vector. The value entrained can be
 the nearest node or an upstream velocity value defined by the edge
-midpoint value or by a specified value.
+midpoint value.
 
 Mixture Fraction, Enthalpy, Species, :math:`k_{sgs}`, k and :math:`\omega` 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1006,7 +953,6 @@ the effective thermal diffusivity (the molecular and turbulent parts),
 :math:`c_p` is the specific heat, and :math:`\partial T / \partial n` is 
 the boundary-normal temperature gradient.
 
-.. _periodic_bc:
 
 Periodic Boundary Condition
 +++++++++++++++++++++++++++

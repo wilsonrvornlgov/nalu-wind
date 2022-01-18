@@ -65,7 +65,6 @@ SurfaceForceAndMomentAlgorithm::SurfaceForceAndMomentAlgorithm(
     pressure_(NULL),
     pressureForce_(NULL),
     viscousForce_(NULL),
-    tauWallVector_(NULL),
     tauWall_(NULL),
     yplus_(NULL),
     density_(NULL),
@@ -81,7 +80,6 @@ SurfaceForceAndMomentAlgorithm::SurfaceForceAndMomentAlgorithm(
   pressure_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "pressure");
   pressureForce_ = meta_data.get_field<VectorFieldType>(stk::topology::NODE_RANK, "pressure_force");
   viscousForce_ = meta_data.get_field<VectorFieldType>(stk::topology::NODE_RANK, "viscous_force");
-  tauWallVector_ = meta_data.get_field<VectorFieldType>(stk::topology::NODE_RANK, "tau_wall_vector");
   tauWall_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "tau_wall");
   yplus_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "yplus");
   density_ = meta_data.get_field<ScalarFieldType>(stk::topology::NODE_RANK, "density");
@@ -281,7 +279,6 @@ SurfaceForceAndMomentAlgorithm::execute()
         const double *duidxj = stk::mesh::field_data(*dudx_, node );
         double *pressureForce = stk::mesh::field_data(*pressureForce_, node );
         double *viscousForce = stk::mesh::field_data(*viscousForce_, node );
-        double *tauWallVector = stk::mesh::field_data(*tauWallVector_, node );
         double *tauWall = stk::mesh::field_data(*tauWall_, node );
         double *yplus = stk::mesh::field_data(*yplus_, node );
         const double assembledArea = *stk::mesh::field_data(*assembledArea_, node );
@@ -324,7 +321,6 @@ SurfaceForceAndMomentAlgorithm::execute()
         }
         
         // compute total force and tangential tau
-        const double areaFac = aMag/assembledArea;
         double tauTangential = 0.0;
         for ( int i = 0; i < nDim; ++i ) {
           ws_t_force[i] = ws_p_force[i] + ws_v_force[i];
@@ -333,11 +329,11 @@ SurfaceForceAndMomentAlgorithm::execute()
             if ( i != j )
               tauiTangential -= ws_normal[i]*ws_normal[j]*ws_tau[j];
           }
-          tauWallVector[i] += tauiTangential * areaFac;
           tauTangential += tauiTangential*tauiTangential;
         }
 
         // assemble nodal quantities; scaled by area for L2 lumped nodal projection
+        const double areaFac = aMag/assembledArea;
         *tauWall += std::sqrt(tauTangential)*areaFac;
 
         cross_product(&ws_t_force[0], &ws_moment[0], &ws_radius[0]);
@@ -361,6 +357,7 @@ SurfaceForceAndMomentAlgorithm::execute()
         const double * coordL = stk::mesh::field_data(*coordinates_, nodeL );
         const double * coordR = stk::mesh::field_data(*coordinates_, nodeR );
 
+        // determine yp; ~nearest opposing edge normal distance to wall
         double ypBip = 0.0;
         for ( int j = 0; j < nDim; ++j ) {
           const double nj = ws_normal[j];

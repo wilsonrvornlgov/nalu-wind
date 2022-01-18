@@ -24,10 +24,10 @@ public:
   using TeamType = sierra::nalu::DeviceTeamHandleType;
   using ShmemType = sierra::nalu::DeviceShmem;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   TestContinuityKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~TestContinuityKernel() = default;
 
   TestContinuityKernel(

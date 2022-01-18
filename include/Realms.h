@@ -13,7 +13,11 @@
 #define Realms_h
 
 #include <Enums.h>
+
+// yaml for parsing..
+#include <yaml-cpp/yaml.h>
 #include <Realm.h>
+#include <NaluParsing.h>
 
 #include <map>
 #include <string>
@@ -39,8 +43,7 @@ public:
 
   void load(const YAML::Node & node) ;
   void breadboard();
-  void initialize_prolog();
-  void initialize_epilog();
+  void initialize();
   Simulation *root();
   Simulation *parent();
   size_t size() {return realmVector_.size();}

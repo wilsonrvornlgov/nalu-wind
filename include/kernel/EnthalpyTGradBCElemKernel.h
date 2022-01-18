@@ -42,10 +42,10 @@ public:
     bool,
     ElemDataRequests&);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FORCEINLINE_FUNCTION
   EnthalpyTGradBCElemKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~EnthalpyTGradBCElemKernel() = default;
 
   /** Execute the kernel within a Kokkos loop and populate the LHS and RHS for

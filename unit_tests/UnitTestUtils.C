@@ -12,10 +12,10 @@
 #include <stk_mesh/base/Selector.hpp>
 #include <stk_mesh/base/SkinBoundary.hpp>
 #include <stk_mesh/base/GetEntities.hpp>
-#include <stk_mesh/base/CreateEdges.hpp>
 #include <stk_topology/topology.hpp>
 
 #include <master_element/TensorOps.h>
+#include <nalu_make_unique.h>
 
 #include "UnitTestUtils.h"
 #include "UnitTestKokkosUtils.h"
@@ -84,7 +84,6 @@ void fill_hex8_mesh(const std::string& meshSpec, stk::mesh::BulkData& bulk)
 
     auto& blockPart = meta.get_topology_root_part(stk::topology::HEX_8);
     stk::mesh::create_exposed_block_boundary_sides(bulk,  blockPart, {&surfPart});
-    stk::mesh::create_edges(bulk, meta.universal_part());
 }
 
 void dump_mesh(stk::mesh::BulkData& bulk, std::vector<stk::mesh::FieldBase*> fields, std::string name)

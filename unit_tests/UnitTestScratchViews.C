@@ -12,10 +12,8 @@
 #include <ElemDataRequestsGPU.h>
 #include <ScratchViews.h>
 #include <kernel/Kernel.h>
-#include <ngp_utils/NgpFieldManager.h>
 
-#include <stk_mesh/base/Ngp.hpp>
-#include <stk_mesh/base/NgpMesh.hpp>
+#include <stk_ngp/Ngp.hpp>
 
 using TeamType = sierra::nalu::DeviceTeamHandleType;
 using ShmemType = sierra::nalu::DeviceShmem;
@@ -33,6 +31,7 @@ class TestKernel
     sierra::nalu::SharedMemView<double*,ShmemType> & /* rhs */,
     sierra::nalu::ScratchViews<sierra::nalu::DoubleType,TeamType,ShmemType> & /* scratchViews */) const
   {
+    printf("TestKernel::execute!!\n");
   }
 
   KOKKOS_FUNCTION
@@ -41,6 +40,7 @@ class TestKernel
     sierra::nalu::SharedMemView<double*,ShmemType> & /* rhs */,
     sierra::nalu::ScratchViews<double,TeamType,ShmemType> & /* scratchViews */) const
   {
+    printf("TestKernel::execute!!\n");
   }
 
   void execute(
@@ -92,7 +92,7 @@ void do_the_test(stk::mesh::BulkData& bulk, sierra::nalu::ScalarFieldType* press
   EXPECT_EQ(3u, dataReq.get_fields().size());
 
   const stk::mesh::MetaData& meta = bulk.mesh_meta_data();
-  sierra::nalu::nalu_ngp::FieldManager fieldMgr(bulk);
+  ngp::FieldManager fieldMgr(bulk);
 
   sierra::nalu::ElemDataRequestsGPU dataNGP(fieldMgr, dataReq, meta.get_fields().size());
 
@@ -116,7 +116,7 @@ void do_the_test(stk::mesh::BulkData& bulk, sierra::nalu::ScalarFieldType* press
   result.template modify<typename IntViewType::host_mirror_space>();
   result.template sync<typename IntViewType::execution_space>();
 
-  stk::mesh::NgpMesh ngpMesh(bulk);
+  ngp::Mesh ngpMesh(bulk);
 
   TestKernel testKernel(velocityOrdinal, pressureOrdinal);
 
@@ -125,7 +125,7 @@ void do_the_test(stk::mesh::BulkData& bulk, sierra::nalu::ScalarFieldType* press
 
   Kokkos::parallel_for(team_exec, KOKKOS_LAMBDA(const sierra::nalu::DeviceTeamHandleType& team)
   {
-    const stk::mesh::NgpMesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
+    const ngp::Mesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
 
     sierra::nalu::ScratchViews<double,TeamType,ShmemType> scrviews(team, ngpMesh.get_spatial_dimension(), nodesPerElement, dataNGP);
 
@@ -247,7 +247,7 @@ void do_the_smdata_test(stk::mesh::BulkData& bulk, sierra::nalu::ScalarFieldType
   EXPECT_EQ(3u, dataReq.get_fields().size());
 
   const stk::mesh::MetaData& meta = bulk.mesh_meta_data();
-  sierra::nalu::nalu_ngp::FieldManager fieldMgr(bulk);
+  ngp::FieldManager fieldMgr(bulk);
 
   sierra::nalu::ElemDataRequestsGPU dataNGP(fieldMgr, dataReq, meta.get_fields().size());
 
@@ -270,7 +270,7 @@ void do_the_smdata_test(stk::mesh::BulkData& bulk, sierra::nalu::ScalarFieldType
   scv_check.template modify<typename DoubleTypeView::host_mirror_space>();
   scv_check.template sync<typename DoubleTypeView::execution_space>();
 
-  stk::mesh::NgpMesh ngpMesh(bulk);
+  ngp::Mesh ngpMesh(bulk);
 
   TestKernel testKernel(velocityOrdinal, pressureOrdinal);
 
@@ -279,7 +279,7 @@ void do_the_smdata_test(stk::mesh::BulkData& bulk, sierra::nalu::ScalarFieldType
 
   Kokkos::parallel_for(team_exec, KOKKOS_LAMBDA(const sierra::nalu::DeviceTeamHandleType& team)
   {
-    const stk::mesh::NgpMesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
+    const ngp::Mesh::BucketType& b = ngpMesh.get_bucket(stk::topology::ELEM_RANK, team.league_rank());
 
     sierra::nalu::SharedMemData<TeamType,ShmemType> smdata(team, ngpMesh.get_spatial_dimension(), dataNGP, numNodes, rhsSize);
 

@@ -15,7 +15,6 @@
 #include "UnitTestTpetraHelperObjects.h"
 #include "FixPressureAtNodeInfo.h"
 #include "FixPressureAtNodeAlgorithm.h"
-#include "stk_mesh/base/NgpField.hpp"
 
 #include "edge_kernels/ScalarEdgeSolverAlg.h"
 
@@ -86,6 +85,7 @@ TEST_F(MixtureFractionKernelHex8Mesh, NGP_adv_diff_edge_tpetra)
 
   // Setup solution options for default advection kernel
   solnOpts_.meshMotion_ = false;
+  solnOpts_.meshDeformation_ = false;
   solnOpts_.externalMeshDeformation_ = false;
   solnOpts_.alphaMap_["mixture_fraction"] = 0.0;
   solnOpts_.alphaUpwMap_["mixture_fraction"] = 0.0;
@@ -123,7 +123,7 @@ TEST_F(MixtureFractionKernelHex8Mesh, NGP_adv_diff_edge_tpetra)
     }
   }
 
-  //copy_stk_to_tpetra is not converted to stk::mesh::NgpField yet, but this test still
+  //copy_stk_to_tpetra is not converted to ngp::Field yet, but this test still
   //works due to tpetra using UVM space.
   helperObjs.linsys->copy_stk_to_tpetra(viscosity_, helperObjs.linsys->getOwnedRhs());
   helperObjs.linsys->copy_tpetra_to_stk(helperObjs.linsys->getOwnedRhs(), mixFraction_);
@@ -158,6 +158,7 @@ TEST_F(MixtureFractionKernelHex8Mesh, NGP_adv_diff_edge_tpetra_fix_pressure_at_n
 
   // Setup solution options for default advection kernel
   solnOpts->meshMotion_ = false;
+  solnOpts->meshDeformation_ = false;
   solnOpts->externalMeshDeformation_ = false;
   solnOpts->alphaMap_["mixture_fraction"] = 0.0;
   solnOpts->alphaUpwMap_["mixture_fraction"] = 0.0;
@@ -218,6 +219,7 @@ TEST_F(MixtureFractionKernelHex8Mesh, NGP_adv_diff_edge_tpetra_dirichlet)
 
   // Setup solution options for default advection kernel
   solnOpts->meshMotion_ = false;
+  solnOpts->meshDeformation_ = false;
   solnOpts->externalMeshDeformation_ = false;
   solnOpts->alphaMap_["mixture_fraction"] = 0.0;
   solnOpts->alphaUpwMap_["mixture_fraction"] = 0.0;

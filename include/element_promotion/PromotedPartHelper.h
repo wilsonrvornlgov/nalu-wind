@@ -71,8 +71,6 @@ namespace nalu {
 
   stk::topology get_promoted_elem_topo(int dim, int order);
 
-  stk::topology face_topology_for_order(int order);
-
 } // namespace nalu
 } // namespace Sierra
 

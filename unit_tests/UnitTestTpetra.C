@@ -18,7 +18,6 @@
 #include "kernel/KernelBuilder.h"
 #include "SolverAlgorithmDriver.h"
 #include "AssembleElemSolverAlgorithm.h"
-#include "NaluEnv.h"
 #include "Realms.h"
 #include "Realm.h"
 #include "EquationSystem.h"

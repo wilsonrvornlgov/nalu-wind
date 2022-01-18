@@ -16,7 +16,7 @@
 #include "stk_mesh/base/FieldParallel.hpp"
 #include "stk_mesh/base/FieldBLAS.hpp"
 #include "stk_mesh/base/MetaData.hpp"
-#include "stk_mesh/base/NgpFieldParallel.hpp"
+#include "stk_ngp/NgpFieldParallel.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -47,7 +47,6 @@ void NodalGradAlgDriver<GradPhiType>::pre_work()
     fieldMgr.template get_field<double>(gradPhi->mesh_meta_data_ordinal());
 
   ngpGradPhi.set_all(ngpMesh, 0.0);
-  ngpGradPhi.clear_sync_state();
 }
 
 template<typename GradPhiType>
@@ -61,11 +60,12 @@ void NodalGradAlgDriver<GradPhiType>::post_work()
   auto* gradPhi = meta.template get_field<GradPhiType>(
     stk::topology::NODE_RANK, gradPhiName_);
   auto& ngpGradPhi = nalu_ngp::get_ngp_field(meshInfo, gradPhiName_);
+  ngpGradPhi.modify_on_device();
   ngpGradPhi.sync_to_host();
 
   const std::vector<NGPDoubleFieldType*> fVec{&ngpGradPhi};
   bool doFinalSyncToDevice = false;
-  stk::mesh::parallel_sum(bulk, fVec, doFinalSyncToDevice);
+  ngp::parallel_sum(bulk, fVec, doFinalSyncToDevice);
 
   const int dim2 = meta.spatial_dimension();
   const int dim1 = std::is_same<VectorFieldType, GradPhiType>::value
@@ -76,7 +76,7 @@ void NodalGradAlgDriver<GradPhiType>::post_work()
   }
 
   if (realm_.hasOverset_) {
-    realm_.overset_field_update(gradPhi, dim1, dim2, doFinalSyncToDevice);
+    realm_.overset_orphan_node_field_update(gradPhi, dim1, dim2);
   }
 
   ngpGradPhi.modify_on_host();

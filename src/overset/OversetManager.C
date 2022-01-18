@@ -58,15 +58,6 @@ OversetManager::get_inactive_selector()
 }
 
 void
-OversetManager::reset_data_structures()
-{
-  delete_info_vec();
-  oversetInfoVec_.clear();
-  holeNodes_.clear();
-  fringeNodes_.clear();
-}
-
-void
 OversetManager::overset_orphan_node_field_update(
   stk::mesh::FieldBase *theField,
   const int sizeRow,

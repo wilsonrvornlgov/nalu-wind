@@ -14,7 +14,6 @@
 #include "ngp_utils/NgpTypes.h"
 #include "ngp_utils/NgpLoopUtils.h"
 #include "ngp_utils/NgpFieldUtils.h"
-#include "stk_mesh/base/NgpMesh.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -22,7 +21,7 @@ namespace nalu_ngp {
 
 /** Operation: `y = alpha * x + beta * y`
  *
- *  @param ngpMesh Instance of stk::mesh::NgpMesh
+ *  @param ngpMesh Instance of ngp::Mesh
  *  @param sel Selector where the operation is applied
  */
 template<
@@ -45,8 +44,6 @@ inline void field_axpby(
 
   using Traits = NGPMeshTraits<Mesh>;
   using MeshIndex = typename Traits::MeshIndex;
-
-  yField.sync_to_device();
 
   nalu_ngp::run_entity_algorithm(
     "ngp_field_axpby",

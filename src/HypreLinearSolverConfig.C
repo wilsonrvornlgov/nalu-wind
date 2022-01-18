@@ -44,20 +44,14 @@ HypreLinearSolverConfig::load(const YAML::Node& node)
   get_if_present(node, "max_iterations", maxIterations_, maxIterations_);
   get_if_present(node, "output_level", outputLevel_, outputLevel_);
   get_if_present(node, "kspace", kspace_, kspace_);
-  get_if_present(node, "sync_alg", sync_alg_, sync_alg_);
 
   get_if_present(node, "write_matrix_files", writeMatrixFiles_, writeMatrixFiles_);
 
   get_if_present(node, "recompute_preconditioner",
                  recomputePreconditioner_, recomputePreconditioner_);
-  get_if_present(node, "recompute_preconditioner_frequency",
-                 recomputePrecondFrequency_, recomputePrecondFrequency_);
   get_if_present(node, "reuse_preconditioner",
                  reusePreconditioner_, reusePreconditioner_);
   get_if_present(node, "segregated_solver", useSegregatedSolver_, useSegregatedSolver_);
-  get_if_present(node, "simple_hypre_matrix_assemble", simpleHypreMatrixAssemble_, simpleHypreMatrixAssemble_);
-  get_if_present(node, "dump_hypre_matrix_stats", dumpHypreMatrixStats_, dumpHypreMatrixStats_);
-  get_if_present(node, "reuse_linear_system", reuseLinSysIfPossible_, reuseLinSysIfPossible_);
 
   if (node["absolute_tolerance"]) {
     hasAbsTol_ = true;
@@ -69,40 +63,18 @@ HypreLinearSolverConfig::load(const YAML::Node& node)
   if ( (precond_ == "none") && !isHypreSolver_)
     throw std::runtime_error("Invalid combination of Hypre preconditioner and solver method specified.");
 
-  // Determine how we are parsing options for hypre solvers
-  std::string hypreOptsFile;
-  get_if_present_no_default(node, "hypre_cfg_file", hypreOptsFile);
-  YAML::Node doc, hnode;
-  if (hypreOptsFile.empty()) {
-    // No hypre configuration file provided, parse options from Nalu-Wind input file
-    hnode = node;
-  } else {
-    // Hypre configuration file available, parse options from a specific node
-    // within the configuration file. Default is `hypre`, but can be tailored
-    // for `hypre_elliptic`, `hypre_momentum`, `hypre_scalar` and so on.
-    std::string hypreOptsNode{"hypre"};
-    get_if_present_no_default(node, "hypre_cfg_node", hypreOptsNode);
-    doc = YAML::LoadFile(hypreOptsFile.c_str());
-    if (doc[hypreOptsNode])
-      hnode = doc[hypreOptsNode];
-    else
-      throw std::runtime_error(
-        "HypreLinearSolverConfig: Cannot find configuration " + hypreOptsNode +
-        " in file " + hypreOptsFile);
-  }
-
   if (method_ == "hypre_boomerAMG") {
-    boomerAMG_solver_config(hnode);
+    boomerAMG_solver_config(node);
   }
   else {
     funcParams_.clear();
 
     // Configure preconditioner (must always be Hypre)
-    configure_hypre_preconditioner(hnode);
+    configure_hypre_preconditioner(node);
 
     if (isHypreSolver_) {
       paramsPrecond_->set("SolveOrPrecondition", Ifpack2::Hypre::Solver);
-      configure_hypre_solver(hnode);
+      configure_hypre_solver(node);
     } else {
       throw std::runtime_error("Non-hypre solver option not supported yet");
     }
@@ -180,9 +152,6 @@ HypreLinearSolverConfig::boomerAMG_precond_config(const YAML::Node& node)
   get_if_present(node, "bamg_relax_type", bamgRelaxType_, bamgRelaxType_);
   get_if_present(node, "bamg_relax_order", bamgRelaxOrder_, bamgRelaxOrder_);
   get_if_present(node, "bamg_num_sweeps", bamgNumSweeps_, bamgNumSweeps_);
-  get_if_present(node, "bamg_num_down_sweeps", bamgNumDownSweeps_, bamgNumDownSweeps_);
-  get_if_present(node, "bamg_num_up_sweeps", bamgNumUpSweeps_, bamgNumUpSweeps_);
-  get_if_present(node, "bamg_num_coarse_sweeps", bamgNumCoarseSweeps_, bamgNumCoarseSweeps_);
   get_if_present(node, "bamg_max_levels", bamgMaxLevels_, bamgMaxLevels_);
   get_if_present(node, "bamg_strong_threshold", bamgStrongThreshold_, bamgStrongThreshold_);
   get_if_present(node, "bamg_output_level", output_level, output_level);
@@ -204,23 +173,9 @@ HypreLinearSolverConfig::boomerAMG_precond_config(const YAML::Node& node)
     bamgRelaxType_)));
   funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
     Ifpack2::Hypre::Prec, &HYPRE_BoomerAMGSetRelaxOrder, bamgRelaxOrder_)));
-
-  if (node["bamg_num_down_sweeps"] && node["bamg_num_up_sweeps"] && node["bamg_num_coarse_sweeps"]) {
-    funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
-      Ifpack2::Hypre::Prec, &HYPRE_BoomerAMGSetCycleNumSweeps,
-      bamgNumDownSweeps_, 1)));
-    funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
-      Ifpack2::Hypre::Prec, &HYPRE_BoomerAMGSetCycleNumSweeps,
-      bamgNumUpSweeps_, 2)));
-    funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
-      Ifpack2::Hypre::Prec, &HYPRE_BoomerAMGSetCycleNumSweeps,
-      bamgNumCoarseSweeps_, 3)));
-  } else {
-    funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
-      Ifpack2::Hypre::Prec, &HYPRE_BoomerAMGSetNumSweeps,
-      bamgNumSweeps_)));
-  }
-
+  funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
+    Ifpack2::Hypre::Prec, &HYPRE_BoomerAMGSetNumSweeps,
+    bamgNumSweeps_)));
   funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
     Ifpack2::Hypre::Prec, &HYPRE_BoomerAMGSetMaxLevels,
     bamgMaxLevels_)));
@@ -406,6 +361,7 @@ HypreLinearSolverConfig::hypre_gmres_solver_config(const YAML::Node& node)
 void
 HypreLinearSolverConfig::hypre_cogmres_solver_config(const YAML::Node& node)
 {
+#ifdef HYPRE_COGMRES
   int logLevel = 1;
   get_if_present(node, "log_level", logLevel, logLevel);
 
@@ -415,8 +371,6 @@ HypreLinearSolverConfig::hypre_cogmres_solver_config(const YAML::Node& node)
     Ifpack2::Hypre::Solver, &HYPRE_COGMRESSetMaxIter, maxIterations_)));
   funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
     Ifpack2::Hypre::Solver, &HYPRE_COGMRESSetTol, tolerance_)));
-  funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
-    Ifpack2::Hypre::Solver, &HYPRE_COGMRESSetCGS, sync_alg_)));
 
   if (hasAbsTol_) {
     funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
@@ -428,6 +382,7 @@ HypreLinearSolverConfig::hypre_cogmres_solver_config(const YAML::Node& node)
   funcParams_.push_back(Teuchos::rcp(new Ifpack2::FunctionParameter(
     Ifpack2::Hypre::Solver, &HYPRE_COGMRESSetLogging, logLevel)));
   paramsPrecond_->set("Solver", Ifpack2::Hypre::COGMRES);
+#endif
 }
 
 void
@@ -562,7 +517,11 @@ HypreLinearSolverConfig::configure_hypre_solver
     hypre_gmres_solver_config(node);
   }
   else if (method_ == "hypre_cogmres") {
+#ifdef HYPRE_COGMRES
     hypre_cogmres_solver_config(node);
+#else
+    throw std::runtime_error("HYPRE version does not support COGMRES");
+#endif
   }
   else if (method_ == "hypre_lgmres") {
     hypre_lgmres_solver_config(node);

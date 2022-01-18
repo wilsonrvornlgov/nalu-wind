@@ -15,9 +15,7 @@
 #include "FieldTypeDef.h"
 
 #include "stk_mesh/base/BulkData.hpp"
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-#include "stk_mesh/base/Types.hpp"
+#include "stk_ngp/Ngp.hpp"
 
 namespace sierra{
 namespace nalu{
@@ -32,10 +30,10 @@ public:
     const stk::mesh::BulkData&,
     ScalarFieldType*);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   ScalarGclNodeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   virtual ~ScalarGclNodeKernel() = default;
 
   virtual void setup(Realm&) override;
@@ -47,12 +45,12 @@ public:
     const stk::mesh::FastMeshIndex&) override;
 
 private:
-  stk::mesh::NgpField<double> scalarQNp1_;
-  stk::mesh::NgpField<double> densityNp1_;
-  stk::mesh::NgpField<double> divV_;
-  stk::mesh::NgpField<double> dualNdVolNm1_;
-  stk::mesh::NgpField<double> dualNdVolN_;
-  stk::mesh::NgpField<double> dualNdVolNp1_;
+  ngp::Field<double> scalarQNp1_;
+  ngp::Field<double> densityNp1_;
+  ngp::Field<double> divV_;
+  ngp::Field<double> dualNdVolNm1_;
+  ngp::Field<double> dualNdVolN_;
+  ngp::Field<double> dualNdVolNp1_;
 
   unsigned scalarQNp1ID_ {stk::mesh::InvalidOrdinal};
   unsigned densityNp1ID_ {stk::mesh::InvalidOrdinal};

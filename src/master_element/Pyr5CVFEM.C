@@ -34,27 +34,22 @@
 namespace sierra{
 namespace nalu{
 
-
-KOKKOS_FUNCTION double regularize_apex(double t_tmp)
-{
-  constexpr double eps = 10. * std::numeric_limits<double>::epsilon();
-  const double one_minus_t = 1.0 - t_tmp;
-  const double t = (std::fabs(one_minus_t) > eps) ? t_tmp : 1.0 + std::copysign(eps, one_minus_t);
-  return t;
-}
-
 template<typename ViewType>
 KOKKOS_FUNCTION void pyramid_shape_fcn(
   const int npts,
   const double* par_coord,
   ViewType& shape_fcn)
 {
+  const double eps = std::numeric_limits<double>::epsilon();
 
   for ( int j = 0; j < npts; ++j ) {
     const int k     = 3*j;
     const double r    = par_coord[k+0];
     const double s    = par_coord[k+1];
-    const double t    = regularize_apex(par_coord[k+2]);
+    const double t_tmp    = par_coord[k+2];
+
+    const double one_minus_t = 1.0 - t_tmp;
+    const double t = (std::fabs(one_minus_t) > eps) ? t_tmp : 1.0 + std::copysign(eps, one_minus_t);
     const double quarter_inv_tm1 = 0.25 / (1.0 - t);
 
     shape_fcn(j, 0) = (1.0 - r - t) * (1.0 - s - t) * quarter_inv_tm1;
@@ -95,12 +90,17 @@ void pyr_deriv(const int npts,
 {
   // d3d(c,s,j) = deriv[c + 3*(s + 5*j)] = deriv[c+3s+15j]
 
+  const double eps = std::numeric_limits<double>::epsilon();
+  
   for ( int j = 0; j < npts; ++j) {
     const int k = j*3;
     
     const double r = intgLoc[k+0];
     const double s = intgLoc[k+1];
-    const double t = regularize_apex(intgLoc[k+2]);
+    const double t_tmp = intgLoc[k+2];
+    
+    const double one_minus_t = 1.0 - t_tmp;
+    const double t = (std::fabs(one_minus_t) > eps) ? t_tmp : 1.0 + std::copysign(eps, one_minus_t);
     const double quarter_inv_tm1 = 0.25 / (1.0 - t);
     const double t_term = 4.0 * r * s * quarter_inv_tm1 * quarter_inv_tm1;
     
@@ -192,7 +192,6 @@ PyrSCV::ipNodeMap(
   return ipNodeMap_;
 }
 
-KOKKOS_FUNCTION
 DoubleType polyhedral_volume_by_faces(int  /* ncoords */, const DoubleType volcoords[][3],
                                       int ntriangles, const int triangleFaceTable[][3])
 {
@@ -233,7 +232,6 @@ DoubleType polyhedral_volume_by_faces(int  /* ncoords */, const DoubleType volco
   return volume;
 }
 
-KOKKOS_FUNCTION
 DoubleType octohedron_volume_by_triangle_facets(const DoubleType volcoords[10][3])
 {
   DoubleType coords[14][3];
@@ -426,8 +424,10 @@ void PyrSCV::determinant(
       epyrcoords[inode][k] = coords[pyramidSubcontrolNodeTable[icv][inode]][k];
     }
   }
+#ifndef KOKKOS_ENABLE_CUDA
   // compute volume using an equivalent polyhedron
   vol(icv) = octohedron_volume_by_triangle_facets(epyrcoords);
+#endif
 }
 
 //--------------------------------------------------------------------------
@@ -510,12 +510,17 @@ PyrSCV::pyr_shape_fcn(
   const double *par_coord, 
   double *shape_fcn)
 {
+  const double eps = std::numeric_limits<double>::epsilon();
+  
   for ( int j = 0; j < npts; ++j ) {
     const int fivej = 5*j;
     const int k     = 3*j;
     const double r    = par_coord[k+0];
     const double s    = par_coord[k+1];
-    const double t    = regularize_apex(par_coord[k+2]);
+    const double t_tmp    = par_coord[k+2];
+    
+    const double one_minus_t = 1.0 - t_tmp;
+    const double t = (std::fabs(one_minus_t) > eps) ? t_tmp : 1.0 + std::copysign(eps, one_minus_t);
     const double quarter_inv_tm1 = 0.25 / (1.0 - t);
     
     shape_fcn[0 + fivej] = (1.0 - r - t) * (1.0 - s - t) * quarter_inv_tm1;
@@ -568,7 +573,6 @@ void PyrSCS::Mij(
     SharedMemView<DoubleType***, DeviceShmem>& metric,
     SharedMemView<DoubleType***, DeviceShmem>& deriv)
 {
-  pyr_deriv(numIntPoints_, &intgLoc_[0], deriv);
   generic_Mij_3d<AlgTraitsPyr5>(deriv, coords, metric);
 }
 
@@ -1011,7 +1015,6 @@ double PyrSCS::isInElement(
   std::array<double, dim> delta;
   int iter = 0;
 
-  bool solve_failed = false;
   do {
     // interpolate coordinate at guess
     constexpr int nNodes = 5;
@@ -1024,11 +1027,6 @@ double PyrSCS::isInElement(
     error_vec[0] = pointCoord[0] - dot5(weights.data(), elemNodalCoord + 0 * nNodes);
     error_vec[1] = pointCoord[1] - dot5(weights.data(), elemNodalCoord + 1 * nNodes);
     error_vec[2] = pointCoord[2] - dot5(weights.data(), elemNodalCoord + 2 * nNodes);
-
-    // Break early if the error vector becomes nearly zero
-    if (vector_norm_sq(error_vec.data(), 3) < isInElemConverged) {
-      break;
-    }
 
     // update guess along gradient of mapping from physical-to-reference coordinates
     // transpose of the jacobian of the forward mapping
@@ -1052,12 +1050,7 @@ double PyrSCS::isInElement(
     }
 
     // apply its inverse on the error vector
-    auto status = solve33(jact.data(), error_vec.data(), delta.data());
-
-    if (status == SolveStatus::FAILED) {
-      solve_failed = true;
-      break;
-    }
+    solve33(jact.data(), error_vec.data(), delta.data());
 
     // update guess
     guess[0] += delta[0];
@@ -1073,7 +1066,7 @@ double PyrSCS::isInElement(
   isoParCoord[2] = std::numeric_limits<double>::max();
   double dist = std::numeric_limits<double>::max();
 
-  if (iter < N_MAX_ITER && !solve_failed) {
+  if (iter < N_MAX_ITER) {
     // output if succeeded:
     isoParCoord[0] = guess[0];
     isoParCoord[1] = guess[1];
@@ -1124,13 +1117,18 @@ void PyrSCS::pyr_derivative(
   double *deriv)
 {
   // d3d(c,s,j) = deriv[c + 3*(s + 5*j)] = deriv[c+3s+15j]
+  const double eps = std::numeric_limits<double>::epsilon();
+  
   for ( int j = 0; j < npts; ++j) {
     const int k = j*3;
     const int p = 15*j;
     
     const double r = intgLoc[k+0];
     const double s = intgLoc[k+1];
-    const double t = regularize_apex(intgLoc[k+2]);
+    const double t_tmp = intgLoc[k+2];
+    
+    const double one_minus_t = 1.0 - t_tmp;
+    const double t = (std::fabs(one_minus_t) > eps) ? t_tmp : 1.0 + std::copysign(eps, one_minus_t);
     const double quarter_inv_tm1 = 0.25 / (1.0 - t);
     const double t_term = 4.0 * r * s * quarter_inv_tm1 * quarter_inv_tm1;
     
@@ -1244,7 +1242,6 @@ void PyrSCV::Mij(
     SharedMemView<DoubleType***, DeviceShmem>& metric,
     SharedMemView<DoubleType***, DeviceShmem>& deriv)
 {
-  pyr_deriv(numIntPoints_, &intgLoc_[0], deriv);
   generic_Mij_3d<AlgTraitsPyr5>(deriv, coords, metric);
 }
 
@@ -1307,12 +1304,17 @@ PyrSCS::pyr_shape_fcn(
   const double *par_coord, 
   double *shape_fcn)
 {
+  const double eps = std::numeric_limits<double>::epsilon();
+  
   for ( int j = 0; j < npts; ++j ) {
     const int fivej = 5*j;
     const int k     = 3*j;
     const double r    = par_coord[k+0];
     const double s    = par_coord[k+1];
-    const double t = regularize_apex(par_coord[k+2]);
+    const double t_tmp    = par_coord[k+2];
+    
+    const double one_minus_t = 1.0 - t_tmp;
+    const double t = (std::fabs(one_minus_t) > eps) ? t_tmp : 1.0 + std::copysign(eps, one_minus_t);
     const double quarter_inv_tm1 = 0.25 / (1.0 - t);
     
     shape_fcn[0 + fivej] = (1.0 - r - t) * (1.0 - s - t) * quarter_inv_tm1;

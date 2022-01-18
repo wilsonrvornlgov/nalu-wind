@@ -12,7 +12,6 @@
 #include "Realm.h"
 
 #include "stk_mesh/base/MetaData.hpp"
-#include "stk_mesh/base/Types.hpp"
 #include "utils/StkHelpers.h"
 
 #include "SolutionOptions.h"

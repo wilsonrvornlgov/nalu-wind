@@ -23,15 +23,11 @@ TEST_F(MomentumNodeHex8Mesh, NGP_momentum_coriolis)
 
   // simplify ICs
   stk::mesh::field_fill(1.0, *velocity_);
-  velocity_->modify_on_host();
-  velocity_->sync_to_device();
-
   stk::mesh::field_fill(1.0, *density_);
-  density_->modify_on_host();
-  density_->sync_to_device();
 
   // Setup solution options for default kernel
   solnOpts_.meshMotion_ = false;
+  solnOpts_.meshDeformation_ = false;
   solnOpts_.externalMeshDeformation_ = false;
 
   // Setup Coriolis specific options.  Mimics the Ekman spiral test
@@ -56,7 +52,7 @@ TEST_F(MomentumNodeHex8Mesh, NGP_momentum_coriolis)
   EXPECT_EQ(helperObjs.linsys->lhs_.extent(0), 24u);
   EXPECT_EQ(helperObjs.linsys->lhs_.extent(1), 24u);
   EXPECT_EQ(helperObjs.linsys->rhs_.extent(0), 24u);
-  EXPECT_EQ(helperObjs.linsys->numSumIntoCalls_(0), 8u);
+  EXPECT_EQ(helperObjs.linsys->numSumIntoCalls_(0), 8);
 
   // Exact solution
   std::vector<double> rhsExact(24,0.0);
@@ -67,5 +63,4 @@ TEST_F(MomentumNodeHex8Mesh, NGP_momentum_coriolis)
     rhsExact[nnDim + 2] = 0.125 * (-cor.Jxz_  - cor.Jyz_);
   }
   unit_test_kernel_utils::expect_all_near(helperObjs.linsys->rhs_, rhsExact.data());
-
 }

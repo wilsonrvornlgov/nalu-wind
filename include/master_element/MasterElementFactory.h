@@ -18,6 +18,7 @@
 #include <stk_util/util/ReportHandler.hpp>
 
 #include "AlgTraits.h"
+#include "master_element/Quad43DCVFEM.h"
 #include "utils/CreateDeviceExpression.h"
 
 namespace stk { struct topology; }
@@ -48,7 +49,6 @@ namespace nalu{
     static std::map<stk::topology, MasterElement*> &volumeMeMapDev();
     static std::map<stk::topology, MasterElement*> &surfaceMeMapDev();
 
-  public:
     template<typename AlgTraits, typename ME>
     static MasterElement* get_master_element(
       std::map<stk::topology, MasterElement*> &meMapDev
@@ -64,16 +64,10 @@ namespace nalu{
     //FIXME: ETI this
     ThrowRequire(!theTopo.is_super_topology());
     if (meMap.find(theTopo) == meMap.end()) {
-      const std::string& allocname = "ME_alloc_" + theTopo.name();
-      const std::string& placementname = "ME_new_" + theTopo.name();
-      ME* MEinstance = kokkos_malloc_on_device<ME>(allocname);
-      ThrowRequire(MEinstance != nullptr);
-      Kokkos::parallel_for(placementname, 1, KOKKOS_LAMBDA (const int) {
-          new (MEinstance) ME();
-        });
-      meMap[theTopo] = MEinstance;
+      meMap[theTopo] = static_cast<MasterElement*>(sierra::nalu::create_device_expression<ME>());
     }
-    return meMap.at(theTopo);
+    MasterElement* theElem = meMap.at(theTopo);
+    return theElem;
   }
 
   template <typename AlgTraits>

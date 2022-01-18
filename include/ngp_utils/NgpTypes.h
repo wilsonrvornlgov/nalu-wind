@@ -16,7 +16,6 @@
  */
 
 #include "ngp_utils/NgpMeshInfo.h"
-#include "stk_mesh/base/NgpMesh.hpp"
 #include "SimdInterface.h"
 
 #include <memory>
@@ -39,7 +38,7 @@ constexpr int NDimMax = 3;
  *
  *  Depending on the bucket-loop, entity could be one of elem, edge, or face.
  */
-template<typename Mesh = stk::mesh::NgpMesh>
+template<typename Mesh = ngp::Mesh>
 struct EntityInfo
 {
   //! Bucket information
@@ -58,7 +57,7 @@ struct EntityInfo
  *  connected nodes are always for the parent element that owns the boundary
  *  face.
  */
-template<typename Mesh = stk::mesh::NgpMesh>
+template<typename Mesh = ngp::Mesh>
 struct BcFaceElemInfo
 {
   typename Mesh::MeshIndex meshIdx;
@@ -81,7 +80,7 @@ struct BcFaceElemInfo
 
 /** Traits for dealing with STK NGP meshes
  */
-template<typename Mesh=stk::mesh::NgpMesh>
+template<typename Mesh=ngp::Mesh>
 struct NGPMeshTraits
 {
   //! SIMD data type used in element data structures
@@ -91,7 +90,7 @@ struct NGPMeshTraits
   using FieldScalarType = double;
 
   using TeamPolicy =
-    Kokkos::TeamPolicy<typename Mesh::MeshExecSpace, stk::ngp::ScheduleType>;
+    Kokkos::TeamPolicy<typename Mesh::MeshExecSpace, ngp::ScheduleType>;
   using TeamHandleType = typename TeamPolicy::member_type;
   using ShmemType = typename Mesh::MeshExecSpace::scratch_memory_space;
   using MeshIndex = typename Mesh::MeshIndex;

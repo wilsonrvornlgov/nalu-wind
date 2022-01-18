@@ -15,10 +15,8 @@
  *  \brief NGP mesh information objects
  */
 
-#include "stk_mesh/base/Ngp.hpp"
-#include "stk_mesh/base/NgpMesh.hpp"
-#include "stk_mesh/base/GetNgpMesh.hpp"
-#include "ngp_utils/NgpFieldManager.h"
+#include "stk_ngp/Ngp.hpp"
+#include "stk_ngp/NgpFieldManager.hpp"
 
 namespace sierra {
 namespace nalu {
@@ -27,10 +25,10 @@ namespace nalu_ngp {
 /** STK mesh object holder
  *
  *  This lightweight class carries information regarding the STK meshes both the
- *  non-NGP versions (MetaData/BulkData) as well as the `stk::mesh::NgpMesh` and
- *  `nalu_ngp::FieldManager` instances.
+ *  non-NGP versions (MetaData/BulkData) as well as the `ngp::Mesh` and
+ *  `ngp::FieldManager` instances.
  */
-template <typename Mesh = stk::mesh::NgpMesh, typename FieldManager = nalu_ngp::FieldManager>
+template <typename Mesh = ngp::Mesh, typename FieldManager = ngp::FieldManager>
 class MeshInfo
 {
 public:
@@ -41,6 +39,7 @@ public:
     const stk::mesh::BulkData& bulk
   ) : bulk_(bulk),
       meta_(bulk.mesh_meta_data()),
+      ngpMesh_(bulk),
       ngpFieldMgr_(bulk)
   {}
 
@@ -54,7 +53,7 @@ public:
 
   inline const stk::mesh::MetaData& meta() const { return meta_; }
 
-  inline const Mesh& ngp_mesh() const { return stk::mesh::get_updated_ngp_mesh(bulk_); }
+  inline const Mesh& ngp_mesh() const { return ngpMesh_; }
 
   inline const FieldManager& ngp_field_manager() const { return ngpFieldMgr_; }
 
@@ -68,6 +67,9 @@ private:
 
   //! Reference to the mesh meta data
   const stk::mesh::MetaData& meta_;
+
+  //! NGP mesh instance
+  const Mesh ngpMesh_;
 
   //! NGP field manager instance
   const FieldManager ngpFieldMgr_;

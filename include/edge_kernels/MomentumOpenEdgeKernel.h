@@ -7,41 +7,39 @@
 // for more details.
 //
 
+
 #ifndef MOMENTUMOPENEDGEKERNEL_h
 #define MOMENTUMOPENEDGEKERNEL_h
 
 #include "kernel/Kernel.h"
 #include "KokkosInterface.h"
 #include "FieldTypeDef.h"
-#include "Enums.h"
 
 #include "stk_mesh/base/MetaData.hpp"
 #include "stk_mesh/base/Entity.hpp"
 
-namespace sierra {
-namespace nalu {
+namespace sierra{
+namespace nalu{
 
 class SolutionOptions;
 class TimeIntegrator;
 
-
-template <typename BcAlgTraits>
-class MomentumOpenEdgeKernel
-  : public NGPKernel<MomentumOpenEdgeKernel<BcAlgTraits>>
+template<typename BcAlgTraits>
+class MomentumOpenEdgeKernel : public NGPKernel<MomentumOpenEdgeKernel<BcAlgTraits>>
 {
 public:
+
   MomentumOpenEdgeKernel(
     const stk::mesh::MetaData&,
     SolutionOptions*,
     ScalarFieldType*,
     ElemDataRequests&,
-    ElemDataRequests&,
-    EntrainmentMethod = EntrainmentMethod::CLASSIC);
+    ElemDataRequests&);
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FORCEINLINE_FUNCTION
   MomentumOpenEdgeKernel() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_INLINE_FUNCTION
   virtual ~MomentumOpenEdgeKernel() = default;
 
   using Kernel::execute;
@@ -56,24 +54,22 @@ public:
 
 private:
 
-  const unsigned coordinates_{stk::mesh::InvalidOrdinal};
-  const unsigned dudx_{stk::mesh::InvalidOrdinal};
-  const unsigned exposedAreaVec_{stk::mesh::InvalidOrdinal};
-  const unsigned openMassFlowRate_{stk::mesh::InvalidOrdinal};
-  const unsigned velocityBc_{stk::mesh::InvalidOrdinal};
-  const unsigned velocityNp1_{stk::mesh::InvalidOrdinal};
-  const unsigned viscosity_{stk::mesh::InvalidOrdinal};
+  const unsigned coordinates_      {stk::mesh::InvalidOrdinal};
+  const unsigned dudx_             {stk::mesh::InvalidOrdinal};
+  const unsigned exposedAreaVec_   {stk::mesh::InvalidOrdinal};
+  const unsigned openMassFlowRate_ {stk::mesh::InvalidOrdinal};
+  const unsigned velocityBc_       {stk::mesh::InvalidOrdinal};
+  const unsigned velocityNp1_      {stk::mesh::InvalidOrdinal};
+  const unsigned viscosity_        {stk::mesh::InvalidOrdinal};
 
   const double includeDivU_;
   const double nfEntrain_;
-  const EntrainmentMethod entrain_;
-  const TurbulenceModel turbModel_; 
 
   MasterElement* meFC_{nullptr};
   MasterElement* meSCS_{nullptr};
 };
 
 } // namespace nalu
-} // namespace sierra
+} // namespace Sierra
 
 #endif /* MOMENTUMOPENEDGEKERNEL_h */

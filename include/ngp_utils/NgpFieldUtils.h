@@ -12,14 +12,9 @@
 #define NGPFIELDUTILS_H
 
 #include "ngp_utils/NgpTypes.h"
-#include "ngp_utils/NgpFieldManager.h"
 #include "utils/StkHelpers.h"
 
 #include "stk_mesh/base/FieldBase.hpp"
-#include "stk_mesh/base/NgpMesh.hpp"
-#include "stk_mesh/base/NgpField.hpp"
-
-#include <array>
 
 namespace sierra {
 namespace nalu {
@@ -27,9 +22,9 @@ namespace nalu_ngp {
 
 template <
   typename T = double,
-  typename Mesh = stk::mesh::NgpMesh,
-  typename FieldManager = nalu_ngp::FieldManager>
-inline stk::mesh::NgpField<T>& get_ngp_field(
+  typename Mesh = ngp::Mesh,
+  typename FieldManager = ngp::FieldManager>
+inline ngp::Field<T>& get_ngp_field(
   const MeshInfo<Mesh, FieldManager>& meshInfo,
   const std::string& fieldName,
   const stk::mesh::EntityRank& rank = stk::topology::NODE_RANK)
@@ -40,9 +35,9 @@ inline stk::mesh::NgpField<T>& get_ngp_field(
 
 template <
   typename T = double,
-  typename Mesh = stk::mesh::NgpMesh,
-  typename FieldManager = nalu_ngp::FieldManager>
-inline stk::mesh::NgpField<T>& get_ngp_field(
+  typename Mesh = ngp::Mesh,
+  typename FieldManager = ngp::FieldManager>
+inline ngp::Field<T>& get_ngp_field(
   const MeshInfo<Mesh, FieldManager>& meshInfo,
   const std::string& fieldName,
   const stk::mesh::FieldState state,

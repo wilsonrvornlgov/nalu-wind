@@ -81,10 +81,10 @@ inline void destroy(T* obj)
 template<typename T>
 struct NGPCopyHolder
 {
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_INLINE_FUNCTION
   NGPCopyHolder() = default;
 
-  KOKKOS_DEFAULTED_FUNCTION
+  KOKKOS_FUNCTION
   ~NGPCopyHolder() = default;
 
   NGPCopyHolder(T* instance)
