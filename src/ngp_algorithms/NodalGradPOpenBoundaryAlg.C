@@ -33,8 +33,7 @@ namespace nalu{
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
-template <typename AlgTraits>
-NodalGradPOpenBoundary<AlgTraits>::NodalGradPOpenBoundary(
+NodalGradPOpenBoundaryT::NodalGradPOpenBoundaryT(
   Realm &realm,
   stk::mesh::Part *part,
   const bool useShifted)
@@ -54,8 +53,16 @@ NodalGradPOpenBoundary<AlgTraits>::NodalGradPOpenBoundary(
     faceData_(realm.meta_data()),
     elemData_(realm.meta_data())
 {
-  faceData_.add_coordinates_field(coordinates_, AlgTraits::nDim_, CURRENT_COORDINATES);
-  elemData_.add_coordinates_field(coordinates_, AlgTraits::nDim_, CURRENT_COORDINATES);
+  const stk::topology faceTopo = part->topology();
+  const stk::topology elemTopo = get_elem_topo(realm, *part);
+  meFC_  = MasterElementRepo::get_surface_master_element(faceTopo);
+  meSCS_ = MasterElementRepo::get_surface_master_element(elemTopo);
+  const int nDim = meSCS_->ndim();
+  const int nodes_per_face = meFC_->nodes_per_element();
+  const int num_face_ip = meFC_->num_integration_points();
+
+  faceData_.add_coordinates_field(coordinates_, nDim, CURRENT_COORDINATES);
+  elemData_.add_coordinates_field(coordinates_, nDim, CURRENT_COORDINATES);
   faceData_.add_cvfem_face_me   (meFC_);
   elemData_.add_cvfem_surface_me(meSCS_);
   elemData_.add_gathered_nodal_field(pressureField_,1);
@@ -78,9 +85,8 @@ NodalGradPOpenBoundary<AlgTraits>::NodalGradPOpenBoundary(
 //--------------------------------------------------------------------------
 //-------- execute ---------------------------------------------------------
 //--------------------------------------------------------------------------
-template <typename AlgTraits>
 void
-NodalGradPOpenBoundary<AlgTraits>::execute()
+NodalGradPOpenBoundaryT::execute()
 {
   using SimdDataType = nalu_ngp::FaceElemSimdData<stk::mesh::NgpMesh>;
 
@@ -108,9 +114,12 @@ NodalGradPOpenBoundary<AlgTraits>::execute()
 
   stk::mesh::Selector s_locally_owned_union = meta_data.locally_owned_part() & stk::mesh::selectUnion(partVec_);
 
-  const std::string algName = "NodalGradPOpenBoundary_" +
-                              std::to_string(AlgTraits::faceTopo_) + "_" +
-                              std::to_string(AlgTraits::elemTopo_);
+  const std::string algName = "NodalGradPOpenBoundaryT";
+
+  const int nDim              = meSCS_->ndim();
+  const int nodes_per_element = meSCS_->nodes_per_element();
+  const int num_face_ip       = meFC_->num_integration_points();
+  const int nodes_per_face    = meFC_->nodes_per_element();
 
 
   const auto pstabFac = realm_.solutionOptions_->activateOpenMdotCorrection_
@@ -138,16 +147,16 @@ NodalGradPOpenBoundary<AlgTraits>::execute()
 
       const int faceOrdinal = fdata.faceOrd;
 
-      for (int ip = 0; ip < AlgTraits::numFaceIp_; ++ip) {
+      for (int ip = 0; ip < num_face_ip; ++ip) {
         DoubleType pIp = 0.0;
         if (zeroGrad) {
           // evaluate pressure at opposing face.  
           const int oip = meSCS->opposingFace(faceOrdinal, ip);
-          for (int n = 0; n < AlgTraits::nodesPerElement_; ++n) {
+          for (int n = 0; n < nodes_per_element; ++n) {
             pIp += e_shape_fcn(oip,n) * elem_p_field(n);
           }
         } else {
-          for (int n = 0; n < AlgTraits::nodesPerFace_; ++n) {
+          for (int n = 0; n < nodes_per_face; ++n) {
             pIp += v_shape_fcn(ip, n) * face_p_field(n);
           }
         }
@@ -156,7 +165,7 @@ NodalGradPOpenBoundary<AlgTraits>::execute()
         const DoubleType vol = v_dnv(node);
         const DoubleType press_div_vol = (pIp - pstabFac * dyn_p_field(ip))/ vol;
 
-        for ( int d = 0; d < AlgTraits::nDim_; ++d ) {
+        for ( int d = 0; d < nDim; ++d ) {
           const DoubleType areav = v_areav(ip, d);
           gradPOps(fdata, node, d) += areav * press_div_vol;
         }
@@ -164,8 +173,5 @@ NodalGradPOpenBoundary<AlgTraits>::execute()
     }
   );
 }
-
-INSTANTIATE_KERNEL_FACE_ELEMENT(NodalGradPOpenBoundary)
-
 } // namespace nalu
 } // namespace Sierra
